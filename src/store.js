@@ -16,7 +16,7 @@
 //   }]
 // }
 
-const KEY = "teampin-v1";
+const KEY = "marquee-notes-v1";
 
 export const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -40,8 +40,8 @@ export async function hashPassword(pw) {
 }
 
 // Unlocks last for the browser session only.
-export const isUnlocked = (teamId) => sessionStorage.getItem("teampin-unlock-" + teamId) === "1";
-export const unlock = (teamId) => sessionStorage.setItem("teampin-unlock-" + teamId, "1");
+export const isUnlocked = (teamId) => sessionStorage.getItem("marquee-notes-unlock-" + teamId) === "1";
+export const unlock = (teamId) => sessionStorage.setItem("marquee-notes-unlock-" + teamId, "1");
 
 export const NOTE_COLORS = ["#fef08a", "#fbcfe8", "#bae6fd", "#bbf7d0", "#fed7aa", "#ddd6fe"];
 

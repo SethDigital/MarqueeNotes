@@ -68,7 +68,7 @@ function HomeScreen({ teams, onAddTeam, onOpenTeam, onSeedDemo }) {
   return (
     <div className="screen">
       <header className="topbar">
-        <h1><Pin size={22} className="logo-pin" /> TeamPin</h1>
+        <h1><Pin size={22} className="logo-pin" /> MarqueeNotes</h1>
       </header>
 
       <main className="page">

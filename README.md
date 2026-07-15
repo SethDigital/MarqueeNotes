@@ -1,4 +1,4 @@
-# TeamPin
+# MarqueeNotes
 
 A sticky-note pin board for teams. Create a team, add project boards inside it, and pin
 sticky notes with checklists. Notes can be pinned for the whole team or assigned to a
