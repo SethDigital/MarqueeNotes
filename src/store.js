@@ -25,7 +25,15 @@
 
 const KEY = "marquee-notes-v1";
 
-export const uid = () => Math.random().toString(36).slice(2, 10);
+// UUIDs so client-generated ids are valid Postgres uuid primary keys — the
+// same id works in localStorage today and in Supabase after the swap.
+export const uid = () => {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+  });
+};
 
 // Bring any note up to the current shape. Runs on load so saves from earlier
 // versions (no x/y, no deadlines, no tunnels) keep working instead of breaking.

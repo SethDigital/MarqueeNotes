@@ -1,38 +1,79 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   Plus, Users, ArrowLeft, Pin, Trash2, X, FolderOpen, Sparkles, LayoutDashboard,
 } from "lucide-react";
-import { load, save, uid, getMe, setMe, demoData } from "./store.js";
+import { uid, getMe, setMe } from "./store.js";
+import { db, usingBackend } from "./db/index.js";
+import AuthGate from "./AuthGate.jsx";
 import BoardView from "./BoardView.jsx";
 import WorkingAs from "./WorkingAs.jsx";
 import ThemeSwitcher from "./ThemeSwitcher.jsx";
 import PersonalDashboard from "./PersonalDashboard.jsx";
 
 export default function App() {
-  const [data, setData] = useState(load);
-  // view: {screen:"home"} | {screen:"team", teamId} | {screen:"board", teamId, projectId}
-  const [view, setView] = useState({ screen: "home" });
+  // AuthGate supplies the signed-in user (Supabase) or null (localStorage demo).
+  return <AuthGate>{(user) => <Workspace user={user} />}</AuthGate>;
+}
 
-  useEffect(() => save(data), [data]);
+function Workspace({ user }) {
+  const [data, setData] = useState(null); // null while the first load is in flight
+  const [view, setView] = useState({ screen: "home" });
+  // Under a real backend identity is fixed to the signed-in user; in the demo
+  // it stays the per-team "working as" name.
+  const fixedMe = user?.name || null;
+
+  const reload = useCallback(() => {
+    db.loadWorkspace()
+      .then(setData)
+      .catch((err) => { console.error("Load failed:", err); setData({ teams: [] }); });
+  }, []);
+
+  useEffect(() => { reload(); }, [reload]);
+
+  // Realtime: when the backend reports a change, pull a fresh workspace.
+  useEffect(() => {
+    if (!usingBackend) return;
+    return db.subscribe(() => reload());
+  }, [reload]);
+
+  if (!data) return <div className="screen"><p className="page hint">Loading…</p></div>;
 
   const team = data.teams.find((t) => t.id === view.teamId);
   const project = team?.projects.find((p) => p.id === view.projectId);
 
-  const updateTeam = (teamId, fn) =>
-    setData((d) => ({ ...d, teams: d.teams.map((t) => (t.id === teamId ? fn(t) : t)) }));
+  // Optimistic tree updates keep the UI snappy; the db call persists.
+  const patchProject = (teamId, projectId, fn) =>
+    setData((d) => ({
+      ...d,
+      teams: d.teams.map((t) =>
+        t.id === teamId
+          ? { ...t, projects: t.projects.map((p) => (p.id === projectId ? fn(p) : p)) }
+          : t
+      ),
+    }));
+
+  const addTeam = (t) => { setData((d) => ({ ...d, teams: [...d.teams, t] })); db.createTeam(t); };
+  const deleteTeam = (teamId) => {
+    setData((d) => ({ ...d, teams: d.teams.filter((t) => t.id !== teamId) }));
+    db.deleteTeam(teamId);
+  };
+  const addProject = (teamId, proj) => {
+    setData((d) => ({ ...d, teams: d.teams.map((t) => (t.id === teamId ? { ...t, projects: [...t.projects, proj] } : t)) }));
+    db.createProject(teamId, proj);
+  };
+  const setMembers = (teamId, members) => {
+    setData((d) => ({ ...d, teams: d.teams.map((t) => (t.id === teamId ? { ...t, members } : t)) }));
+    db.setMembers(teamId, members);
+  };
 
   if (view.screen === "board" && team && project) {
     return (
       <BoardView
         team={team}
         project={project}
+        fixedMe={fixedMe}
         onBack={() => setView({ screen: "team", teamId: team.id })}
-        onUpdateProject={(fn) =>
-          updateTeam(team.id, (t) => ({
-            ...t,
-            projects: t.projects.map((p) => (p.id === project.id ? fn(p) : p)),
-          }))
-        }
+        onPatchProject={(fn) => patchProject(team.id, project.id, fn)}
       />
     );
   }
@@ -41,13 +82,12 @@ export default function App() {
     return (
       <TeamScreen
         team={team}
+        fixedMe={fixedMe}
         onBack={() => setView({ screen: "home" })}
         onOpenProject={(projectId) => setView({ screen: "board", teamId: team.id, projectId })}
-        onUpdate={(fn) => updateTeam(team.id, fn)}
-        onDelete={() => {
-          setData((d) => ({ ...d, teams: d.teams.filter((t) => t.id !== team.id) }));
-          setView({ screen: "home" });
-        }}
+        onAddProject={(proj) => addProject(team.id, proj)}
+        onSetMembers={(members) => setMembers(team.id, members)}
+        onDelete={() => { deleteTeam(team.id); setView({ screen: "home" }); }}
       />
     );
   }
@@ -55,9 +95,9 @@ export default function App() {
   return (
     <HomeScreen
       teams={data.teams}
-      onAddTeam={(t) => setData((d) => ({ ...d, teams: [...d.teams, t] }))}
+      onAddTeam={addTeam}
       onOpenTeam={(teamId) => setView({ screen: "team", teamId })}
-      onSeedDemo={() => setData(demoData())}
+      onSeedDemo={async () => setData(await db.seedDemo())}
     />
   );
 }
@@ -84,10 +124,12 @@ function HomeScreen({ teams, onAddTeam, onOpenTeam, onSeedDemo }) {
 
         {teams.length === 0 && (
           <div className="empty">
-            <p>No boards up yet. Start one for your team, or load the sample board to look around.</p>
-            <button className="btn" onClick={onSeedDemo}>
-              <Sparkles size={16} /> Load demo data
-            </button>
+            <p>No boards up yet. Start one for your team{usingBackend ? "." : ", or load the sample board to look around."}</p>
+            {!usingBackend && (
+              <button className="btn" onClick={onSeedDemo}>
+                <Sparkles size={16} /> Load demo data
+              </button>
+            )}
           </div>
         )}
 
@@ -120,7 +162,7 @@ function NewTeamModal({ onClose, onCreate }) {
     onCreate({
       id: uid(),
       name: name.trim(),
-      members: members.split(",").map((m) => m.trim()).filter(Boolean),
+      members: usingBackend ? [] : members.split(",").map((m) => m.trim()).filter(Boolean),
       projects: [],
     });
     onClose();
@@ -132,9 +174,11 @@ function NewTeamModal({ onClose, onCreate }) {
         <label>Team name
           <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Design Team" />
         </label>
-        <label>Who&rsquo;s on it? <span className="muted">(comma-separated, add more anytime)</span>
-          <input value={members} onChange={(e) => setMembers(e.target.value)} placeholder="Avery, Sam, Jordan" />
-        </label>
+        {!usingBackend && (
+          <label>Who&rsquo;s on it? <span className="muted">(comma-separated, add more anytime)</span>
+            <input value={members} onChange={(e) => setMembers(e.target.value)} placeholder="Avery, Sam, Jordan" />
+          </label>
+        )}
         {error && <p className="error">{error}</p>}
         <div className="form-actions">
           <button type="button" className="btn" onClick={onClose}>Cancel</button>
@@ -147,26 +191,22 @@ function NewTeamModal({ onClose, onCreate }) {
 
 /* ------------------------------- team ---------------------------------- */
 
-function TeamScreen({ team, onBack, onOpenProject, onUpdate, onDelete }) {
+function TeamScreen({ team, fixedMe, onBack, onOpenProject, onAddProject, onSetMembers, onDelete }) {
   const [tab, setTab] = useState("projects");
   const [newProject, setNewProject] = useState("");
   const [newMember, setNewMember] = useState("");
   const [pinFilter, setPinFilter] = useState("all");
-  const [me, setMeState] = useState(() => getMe(team.id));
+  const [localMe, setLocalMe] = useState(() => getMe(team.id));
+  const me = fixedMe || localMe;
+  const canEditMembers = !usingBackend; // real members come from invites
 
-  const changeMe = (name) => {
-    setMe(team.id, name);
-    setMeState(name);
-  };
+  const changeMe = (name) => { setMe(team.id, name); setLocalMe(name); };
 
   const addProject = (e) => {
     e.preventDefault();
     const name = newProject.trim();
     if (!name) return;
-    onUpdate((t) => ({
-      ...t,
-      projects: [...t.projects, { id: uid(), name, notes: [], decorations: [] }],
-    }));
+    onAddProject({ id: uid(), name, notes: [], decorations: [] });
     setNewProject("");
   };
 
@@ -174,7 +214,7 @@ function TeamScreen({ team, onBack, onOpenProject, onUpdate, onDelete }) {
     e.preventDefault();
     const name = newMember.trim();
     if (!name || team.members.includes(name)) return;
-    onUpdate((t) => ({ ...t, members: [...t.members, name] }));
+    onSetMembers([...team.members, name]);
     setNewMember("");
   };
 
@@ -191,14 +231,12 @@ function TeamScreen({ team, onBack, onOpenProject, onUpdate, onDelete }) {
       <header className="topbar">
         <button className="btn ghost" onClick={onBack}><ArrowLeft size={16} /> Teams</button>
         <h1>{team.name}</h1>
-        <WorkingAs team={team} me={me} onChange={changeMe} />
+        {!fixedMe && <WorkingAs team={team} me={me} onChange={changeMe} />}
         <ThemeSwitcher />
         <button
           className="btn ghost danger"
           title="Delete this team"
-          onClick={() => {
-            if (window.confirm(`Take down “${team.name}” and all its boards?`)) onDelete();
-          }}
+          onClick={() => { if (window.confirm(`Take down “${team.name}” and all its boards?`)) onDelete(); }}
         >
           <Trash2 size={16} />
         </button>
@@ -281,23 +319,29 @@ function TeamScreen({ team, onBack, onOpenProject, onUpdate, onDelete }) {
         {tab === "members" && (
           <>
             <p className="hint">
-              Steps and notes can carry these names, so it&rsquo;s always clear who&rsquo;s on what — and what&rsquo;s already handled.
+              {canEditMembers
+                ? "Steps and notes can carry these names, so it’s always clear who’s on what — and what’s already handled."
+                : "Members come from your team’s real accounts. Invite teammates by email (invite flow coming with the connected build)."}
             </p>
-            <form onSubmit={addMember} className="inline-form">
-              <input value={newMember} onChange={(e) => setNewMember(e.target.value)} placeholder="Add a teammate&rsquo;s name…" />
-              <button className="btn primary" type="submit"><Plus size={16} /> Add</button>
-            </form>
+            {canEditMembers && (
+              <form onSubmit={addMember} className="inline-form">
+                <input value={newMember} onChange={(e) => setNewMember(e.target.value)} placeholder="Add a teammate’s name…" />
+                <button className="btn primary" type="submit"><Plus size={16} /> Add</button>
+              </form>
+            )}
             <ul className="member-list">
               {team.members.map((m) => (
                 <li key={m}>
                   {m}
-                  <button
-                    className="icon-btn"
-                    title="Remove member"
-                    onClick={() => onUpdate((t) => ({ ...t, members: t.members.filter((x) => x !== m) }))}
-                  >
-                    <X size={14} />
-                  </button>
+                  {canEditMembers && (
+                    <button
+                      className="icon-btn"
+                      title="Remove member"
+                      onClick={() => onSetMembers(team.members.filter((x) => x !== m))}
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>

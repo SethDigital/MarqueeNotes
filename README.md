@@ -55,8 +55,11 @@ One-time setup:
 - All persistence goes through [`src/store.js`](src/store.js), so swapping in a real
   API later means changing only that file.
 
-## Phase 2 — real backend (scaffolded)
+## Phase 2 — real backend (wired, pending a live project)
 
-The Supabase schema for shared boards, roles, enforced per-team visibility, and
-real-time sync is scaffolded but not yet wired into the UI — see
-[`docs/BACKEND.md`](docs/BACKEND.md). The app runs fine without it.
+The whole app talks to a `db` repository ([`src/db/`](src/db)) with two
+interchangeable backends: **localStorage** (default, what runs today) and
+**Supabase** (shared boards, roles, enforced per-team visibility, realtime).
+Setting `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` switches to Supabase with
+no code change. The Supabase path is written against the schema but not yet run
+against a live project — see [`docs/BACKEND.md`](docs/BACKEND.md).

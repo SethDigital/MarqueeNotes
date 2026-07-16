@@ -7,39 +7,48 @@ import {
   uid, newNote, NOTE_COLORS, getMe, setMe, tidyPositions,
   fileToDataURL, newDecoration, MAX_DECORATION_BYTES, DECORATION_TYPES,
 } from "./store.js";
+import { db } from "./db/index.js";
 import WorkingAs from "./WorkingAs.jsx";
 import ThemeSwitcher from "./ThemeSwitcher.jsx";
 import Deadline from "./Deadline.jsx";
 
-export default function BoardView({ team, project, onBack, onUpdateProject }) {
+export default function BoardView({ team, project, fixedMe, onBack, onPatchProject }) {
   const canvasRef = useRef(null);
   const fileRef = useRef(null);
-  const [me, setMeState] = useState(() => getMe(team.id));
+  const [localMe, setLocalMe] = useState(() => getMe(team.id));
+  const me = fixedMe || localMe;
 
-  const changeMe = (name) => {
-    setMe(team.id, name);
-    setMeState(name);
+  const changeMe = (name) => { setMe(team.id, name); setLocalMe(name); };
+
+  // Every mutation updates the on-screen tree optimistically, then persists the
+  // concrete object through the repository (localStorage or Supabase).
+  const updateNote = (noteId, fn) => {
+    const current = project.notes.find((n) => n.id === noteId);
+    if (!current) return;
+    const next = fn(current);
+    onPatchProject((p) => ({ ...p, notes: p.notes.map((n) => (n.id === noteId ? next : n)) }));
+    db.updateNote(team.id, project.id, next);
   };
 
-  const updateNote = (noteId, fn) =>
-    onUpdateProject((p) => ({
-      ...p,
-      notes: p.notes.map((n) => (n.id === noteId ? fn(n) : n)),
-    }));
+  const addNote = () => {
+    const note = newNote(project.notes.length);
+    onPatchProject((p) => ({ ...p, notes: [...p.notes, note] }));
+    db.createNote(team.id, project.id, note);
+  };
 
-  const addNote = () =>
-    onUpdateProject((p) => ({ ...p, notes: [...p.notes, newNote(p.notes.length)] }));
-
-  const deleteNote = (noteId) =>
-    onUpdateProject((p) => ({ ...p, notes: p.notes.filter((n) => n.id !== noteId) }));
+  const deleteNote = (noteId) => {
+    onPatchProject((p) => ({ ...p, notes: p.notes.filter((n) => n.id !== noteId) }));
+    db.deleteNote(team.id, project.id, noteId);
+  };
 
   // "Tidy up" — snap the free-floating notes back into neat columns.
   const tidyUp = () => {
     const width = canvasRef.current?.clientWidth || 1200;
-    onUpdateProject((p) => {
-      const slots = tidyPositions(p.notes.length, width);
-      return { ...p, notes: p.notes.map((n, i) => ({ ...n, x: slots[i].x, y: slots[i].y })) };
-    });
+    const slots = tidyPositions(project.notes.length, width);
+    const positions = project.notes.map((n, i) => ({ id: n.id, x: slots[i].x, y: slots[i].y }));
+    const by = new Map(positions.map((x) => [x.id, x]));
+    onPatchProject((p) => ({ ...p, notes: p.notes.map((n) => ({ ...n, ...by.get(n.id) })) }));
+    db.updateNotePositions(team.id, project.id, positions);
   };
 
   /* ------------------- decoration upload framework -------------------- */
@@ -57,30 +66,30 @@ export default function BoardView({ team, project, onBack, onUpdateProject }) {
       return;
     }
     const src = await fileToDataURL(file);
-    onUpdateProject((p) => ({
-      ...p,
-      decorations: [...p.decorations, newDecoration(src, p.decorations.length)],
-    }));
+    const deco = newDecoration(src, project.decorations.length);
+    onPatchProject((p) => ({ ...p, decorations: [...p.decorations, deco] }));
+    db.createDecoration(team.id, project.id, deco);
   };
 
-  const updateDecoration = (decorId, fn) =>
-    onUpdateProject((p) => ({
-      ...p,
-      decorations: p.decorations.map((d) => (d.id === decorId ? fn(d) : d)),
-    }));
+  const updateDecoration = (decorId, fn) => {
+    const current = project.decorations.find((d) => d.id === decorId);
+    if (!current) return;
+    const next = fn(current);
+    onPatchProject((p) => ({ ...p, decorations: p.decorations.map((d) => (d.id === decorId ? next : d)) }));
+    db.updateDecoration(team.id, project.id, next);
+  };
 
-  const deleteDecoration = (decorId) =>
-    onUpdateProject((p) => ({
-      ...p,
-      decorations: p.decorations.filter((d) => d.id !== decorId),
-    }));
+  const deleteDecoration = (decorId) => {
+    onPatchProject((p) => ({ ...p, decorations: p.decorations.filter((d) => d.id !== decorId) }));
+    db.deleteDecoration(team.id, project.id, decorId);
+  };
 
   return (
     <div className="screen">
       <header className="topbar">
         <button className="btn ghost" onClick={onBack}><ArrowLeft size={16} /> {team.name}</button>
         <h1>{project.name}</h1>
-        <WorkingAs team={team} me={me} onChange={changeMe} />
+        {!fixedMe && <WorkingAs team={team} me={me} onChange={changeMe} />}
         <ThemeSwitcher />
         <button className="btn" title="Line the notes up in neat columns" onClick={tidyUp}>
           <LayoutGrid size={16} /> Tidy up

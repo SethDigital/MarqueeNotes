@@ -612,6 +612,28 @@ body {
 .dash-card-meta { display: flex; gap: 8px; flex-wrap: wrap; font-size: 0.72rem; color: var(--muted); }
 .dash-empty { font-size: 0.75rem; color: var(--muted); font-style: italic; margin: 4px 0 0; }
 
+/* Auth bar (Supabase mode only). */
+.auth-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 6px 16px;
+  font-size: 0.8rem;
+  color: var(--muted);
+  background: var(--panel);
+  border-bottom: 1px solid var(--panel-border);
+}
+.link-btn {
+  border: none;
+  background: none;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+  text-decoration: underline;
+}
+
 /* Small screens: keep the top bar usable. */
 @media (max-width: 560px) {
   .topbar { flex-wrap: wrap; }

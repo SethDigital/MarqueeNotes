@@ -14,7 +14,26 @@ step.
 |---|---|
 | [`supabase/migrations/0001_init.sql`](../supabase/migrations/0001_init.sql) | The full schema: tables, enums, Row-Level Security policies, triggers, and Realtime setup |
 | [`src/supabase.js`](../src/supabase.js) | Browser client, configured from env vars; exports `null` until you set them |
+| [`src/db/`](../src/db) | The repository the whole app talks to: `local.js` (localStorage), `supabase.js` (backend), `index.js` (picks one) |
+| [`src/AuthGate.jsx`](../src/AuthGate.jsx) | Email sign-in shown when a backend is configured; pass-through in demo mode |
 | [`.env.example`](../.env.example) | The two env vars to copy into `.env` |
+
+## Wiring status
+
+The data layer **is now wired**. Every mutation in the app goes through the
+`db` repository in [`src/db/`](../src/db), which has two interchangeable
+implementations behind one interface:
+
+- **localStorage** (`local.js`) — the default, and the one the browser tests
+  cover. Verified end-to-end.
+- **Supabase** (`supabase.js`) — activates automatically once the env vars are
+  set. It maps the UI's nested tree to/from the normalized tables and subscribes
+  to Realtime. **Written against the schema and reviewed, but not yet run against
+  a live project** — expect to shake out query/column details on the first real
+  connection.
+
+Flipping between them is nothing more than setting (or unsetting) the two env
+vars — no code change.
 
 ## Schema at a glance
 
@@ -81,14 +100,20 @@ from b, me;
 
 The team-creator trigger makes you an admin automatically.
 
-## Next step: wire the data layer
+## Next step: verify against a live project
 
-The schema is the foundation. Turning it on in the app means:
+The wiring is in place; what remains needs a real Supabase instance:
 
-1. Add a sign-in screen (`supabase.auth`) and swap the "working as" name for `auth.uid()`.
-2. Point `store.js`'s reads/writes at Supabase queries (the UI already goes
-   through that one module, so this is contained).
-3. Add the realtime board sync — Broadcast for live drag frames, Postgres Changes
-   for persisted drops/edits — behind the `boardSync` seam from the architecture notes.
+1. Create a project and apply the migration (steps above).
+2. Set the env vars, run `npm run dev`, sign up — you should land on an empty
+   Teams screen backed by real tables.
+3. Exercise create-team / project / note / drag / check / tunnel and watch the
+   rows in the Supabase dashboard. Fix any column/query mismatches in
+   `src/db/supabase.js` (this is the shake-out the code hasn't had yet).
+4. Known simplifications to revisit: assignee/tunnel fields still round-trip via
+   member **display names** (should move to profile ids), and adding a member is
+   a no-op on the backend (needs a real email-invite flow). "Working On" drag
+   sync is per-drop over Realtime; add Broadcast for smooth live frames later.
 
-Say the word and that's the next piece to build.
+Say the word once you have a project and I'll help work through the first
+real connection.
