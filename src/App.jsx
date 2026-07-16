@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from "react";
 import {
-  Plus, Lock, Unlock, Users, ArrowLeft, Pin, Trash2, X, FolderOpen, Sparkles,
+  Plus, Users, ArrowLeft, Pin, Trash2, X, FolderOpen, Sparkles,
 } from "lucide-react";
-import { load, save, uid, hashPassword, isUnlocked, unlock, demoData } from "./store.js";
+import { load, save, uid, getMe, setMe, demoData } from "./store.js";
 import BoardView from "./BoardView.jsx";
+import WorkingAs from "./WorkingAs.jsx";
 
 export default function App() {
   const [data, setData] = useState(load);
@@ -54,7 +55,7 @@ export default function App() {
       teams={data.teams}
       onAddTeam={(t) => setData((d) => ({ ...d, teams: [...d.teams, t] }))}
       onOpenTeam={(teamId) => setView({ screen: "team", teamId })}
-      onSeedDemo={async () => setData(await demoData())}
+      onSeedDemo={() => setData(demoData())}
     />
   );
 }
@@ -63,7 +64,6 @@ export default function App() {
 
 function HomeScreen({ teams, onAddTeam, onOpenTeam, onSeedDemo }) {
   const [creating, setCreating] = useState(false);
-  const [unlocking, setUnlocking] = useState(null); // team object
 
   return (
     <div className="screen">
@@ -81,27 +81,20 @@ function HomeScreen({ teams, onAddTeam, onOpenTeam, onSeedDemo }) {
 
         {teams.length === 0 && (
           <div className="empty">
-            <p>No teams yet. Create one, or load sample data to look around.</p>
+            <p>No boards up yet. Start one for your team, or load the sample board to look around.</p>
             <button className="btn" onClick={onSeedDemo}>
               <Sparkles size={16} /> Load demo data
             </button>
-            <p className="hint">Demo team password: <code>demo</code></p>
           </div>
         )}
 
         <div className="card-grid">
           {teams.map((t) => (
-            <button
-              key={t.id}
-              className="card"
-              onClick={() => (isUnlocked(t.id) ? onOpenTeam(t.id) : setUnlocking(t))}
-            >
-              <div className="card-title">
-                {isUnlocked(t.id) ? <Unlock size={16} /> : <Lock size={16} />} {t.name}
-              </div>
+            <button key={t.id} className="card" onClick={() => onOpenTeam(t.id)}>
+              <div className="card-title"><Users size={16} /> {t.name}</div>
               <div className="card-sub">
                 <FolderOpen size={14} /> {t.projects.length} project{t.projects.length === 1 ? "" : "s"}
-                <Users size={14} style={{ marginLeft: 12 }} /> {t.members.length}
+                <span className="dot">·</span> {t.members.length} member{t.members.length === 1 ? "" : "s"}
               </div>
             </button>
           ))}
@@ -109,35 +102,21 @@ function HomeScreen({ teams, onAddTeam, onOpenTeam, onSeedDemo }) {
       </main>
 
       {creating && <NewTeamModal onClose={() => setCreating(false)} onCreate={onAddTeam} />}
-      {unlocking && (
-        <PasswordModal
-          team={unlocking}
-          onClose={() => setUnlocking(null)}
-          onUnlocked={() => {
-            const id = unlocking.id;
-            setUnlocking(null);
-            onOpenTeam(id);
-          }}
-        />
-      )}
     </div>
   );
 }
 
 function NewTeamModal({ onClose, onCreate }) {
   const [name, setName] = useState("");
-  const [password, setPassword] = useState("");
   const [members, setMembers] = useState("");
   const [error, setError] = useState("");
 
-  const submit = async (e) => {
+  const submit = (e) => {
     e.preventDefault();
-    if (!name.trim()) return setError("Team name is required.");
-    if (!password) return setError("A password is required.");
+    if (!name.trim()) return setError("Give the team a name.");
     onCreate({
       id: uid(),
       name: name.trim(),
-      passwordHash: await hashPassword(password),
       members: members.split(",").map((m) => m.trim()).filter(Boolean),
       projects: [],
     });
@@ -150,46 +129,13 @@ function NewTeamModal({ onClose, onCreate }) {
         <label>Team name
           <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Design Team" />
         </label>
-        <label>Board password
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Shared with the team" />
-        </label>
-        <label>Members <span className="muted">(comma-separated, optional)</span>
+        <label>Who&rsquo;s on it? <span className="muted">(comma-separated, add more anytime)</span>
           <input value={members} onChange={(e) => setMembers(e.target.value)} placeholder="Avery, Sam, Jordan" />
         </label>
         {error && <p className="error">{error}</p>}
         <div className="form-actions">
           <button type="button" className="btn" onClick={onClose}>Cancel</button>
           <button type="submit" className="btn primary">Create team</button>
-        </div>
-      </form>
-    </Modal>
-  );
-}
-
-function PasswordModal({ team, onClose, onUnlocked }) {
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-
-  const submit = async (e) => {
-    e.preventDefault();
-    if ((await hashPassword(password)) === team.passwordHash) {
-      unlock(team.id);
-      onUnlocked();
-    } else {
-      setError("Wrong password.");
-    }
-  };
-
-  return (
-    <Modal title={`Open “${team.name}”`} onClose={onClose}>
-      <form onSubmit={submit} className="form">
-        <label>Password
-          <input autoFocus type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
-        </label>
-        {error && <p className="error">{error}</p>}
-        <div className="form-actions">
-          <button type="button" className="btn" onClick={onClose}>Cancel</button>
-          <button type="submit" className="btn primary"><Unlock size={16} /> Open</button>
         </div>
       </form>
     </Modal>
@@ -203,12 +149,21 @@ function TeamScreen({ team, onBack, onOpenProject, onUpdate, onDelete }) {
   const [newProject, setNewProject] = useState("");
   const [newMember, setNewMember] = useState("");
   const [pinFilter, setPinFilter] = useState("all");
+  const [me, setMeState] = useState(() => getMe(team.id));
+
+  const changeMe = (name) => {
+    setMe(team.id, name);
+    setMeState(name);
+  };
 
   const addProject = (e) => {
     e.preventDefault();
     const name = newProject.trim();
     if (!name) return;
-    onUpdate((t) => ({ ...t, projects: [...t.projects, { id: uid(), name, notes: [] }] }));
+    onUpdate((t) => ({
+      ...t,
+      projects: [...t.projects, { id: uid(), name, notes: [], decorations: [] }],
+    }));
     setNewProject("");
   };
 
@@ -233,10 +188,12 @@ function TeamScreen({ team, onBack, onOpenProject, onUpdate, onDelete }) {
       <header className="topbar">
         <button className="btn ghost" onClick={onBack}><ArrowLeft size={16} /> Teams</button>
         <h1>{team.name}</h1>
+        <WorkingAs team={team} me={me} onChange={changeMe} />
         <button
           className="btn ghost danger"
+          title="Delete this team"
           onClick={() => {
-            if (window.confirm(`Delete team “${team.name}” and all its boards?`)) onDelete();
+            if (window.confirm(`Take down “${team.name}” and all its boards?`)) onDelete();
           }}
         >
           <Trash2 size={16} />
@@ -262,7 +219,9 @@ function TeamScreen({ team, onBack, onOpenProject, onUpdate, onDelete }) {
               <input value={newProject} onChange={(e) => setNewProject(e.target.value)} placeholder="New project name…" />
               <button className="btn primary" type="submit"><Plus size={16} /> Add</button>
             </form>
-            {team.projects.length === 0 && <p className="hint">No projects yet — add one above to get a board.</p>}
+            {team.projects.length === 0 && (
+              <p className="hint">No boards yet — add a project above and it gets its own board.</p>
+            )}
             <div className="card-grid">
               {team.projects.map((p) => (
                 <button key={p.id} className="card" onClick={() => onOpenProject(p.id)}>
@@ -279,6 +238,7 @@ function TeamScreen({ team, onBack, onOpenProject, onUpdate, onDelete }) {
 
         {tab === "pinned" && (
           <>
+            <p className="hint">Everything the team has flagged, in one place — so nothing gets picked up twice.</p>
             <div className="inline-form">
               <select value={pinFilter} onChange={(e) => setPinFilter(e.target.value)}>
                 <option value="all">All pins</option>
@@ -288,7 +248,7 @@ function TeamScreen({ team, onBack, onOpenProject, onUpdate, onDelete }) {
                 ))}
               </select>
             </div>
-            {pinned.length === 0 && <p className="hint">Nothing pinned here yet. Pin a note from any board.</p>}
+            {pinned.length === 0 && <p className="hint">Nothing pinned yet. Pin a note from any board to flag it here.</p>}
             <div className="card-grid">
               {pinned.map(({ project, note }) => (
                 <button key={note.id} className="card pinned-card" style={{ background: note.color }}
@@ -309,8 +269,11 @@ function TeamScreen({ team, onBack, onOpenProject, onUpdate, onDelete }) {
 
         {tab === "members" && (
           <>
+            <p className="hint">
+              Steps and notes can carry these names, so it&rsquo;s always clear who&rsquo;s on what — and what&rsquo;s already handled.
+            </p>
             <form onSubmit={addMember} className="inline-form">
-              <input value={newMember} onChange={(e) => setNewMember(e.target.value)} placeholder="Add member name…" />
+              <input value={newMember} onChange={(e) => setNewMember(e.target.value)} placeholder="Add a teammate&rsquo;s name…" />
               <button className="btn primary" type="submit"><Plus size={16} /> Add</button>
             </form>
             <ul className="member-list">
@@ -327,7 +290,6 @@ function TeamScreen({ team, onBack, onOpenProject, onUpdate, onDelete }) {
                 </li>
               ))}
             </ul>
-            {team.members.length === 0 && <p className="hint">No members yet — add names so notes can be pinned to people.</p>}
           </>
         )}
       </main>
