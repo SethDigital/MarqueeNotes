@@ -2,11 +2,125 @@
 
 html, body, #root { height: 100%; margin: 0; }
 
-/* Office-wall backdrop; the board itself is the whiteboard. */
+/* ------------------------------- themes --------------------------------
+   Three boards, one office: the classic corkboard (default), a bright
+   whiteboard, and a neon dark mode where notes glow instead of glare.
+   Every component below styles itself from these tokens. */
+
+:root, :root[data-theme="cork"] {
+  --bg: #20312a;
+  --panel: #16211c;
+  --panel-border: #2e4136;
+  --text: #e8efe9;
+  --muted: #a8bdb0;
+  --accent: #f2b84b;
+  --accent-hover: #ffca63;
+  --accent-border: #f2b84b;
+  --accent-text: #241a06;
+  --control: #2c3f35;
+  --control-border: #3d554755;
+  --hover: #37503f;
+  --input-bg: #16211c;
+  --input-border: #3d5547;
+  --danger: #ff9d8f;
+  --card-shadow: none;
+  --card-hover-border: #3d5547;
+  --board-frame: #46352a;
+  --board-bg:
+    radial-gradient(circle at 20% 30%, rgba(255, 255, 255, 0.025) 0 2px, transparent 3px),
+    radial-gradient(circle at 70% 60%, rgba(0, 0, 0, 0.12) 0 2px, transparent 3px),
+    repeating-linear-gradient(45deg, #6b4f35 0 3px, #715538 3px 6px);
+  --board-shadow: inset 0 0 60px rgba(0, 0, 0, 0.45), 0 2px 10px rgba(0, 0, 0, 0.3);
+  --board-empty: rgba(255, 255, 255, 0.6);
+  --note-text: #2a2a1f;
+  --note-faint: rgba(0, 0, 0, 0.35);
+  --note-line: rgba(0, 0, 0, 0.2);
+  --note-dim: rgba(0, 0, 0, 0.45);
+  --note-shadow: 2px 5px 12px rgba(0, 0, 0, 0.4);
+  --chip-bg: rgba(0, 0, 0, 0.06);
+  --chip-text: #4a4a3a;
+  --doneby-text: #2e7d4f;
+  --doneby-bg: rgba(46, 125, 79, 0.12);
+  --check-on: #2e7d4f;
+}
+
+:root[data-theme="white"] {
+  --bg: #e8eae6;
+  --panel: #ffffff;
+  --panel-border: #d9ded8;
+  --text: #26302a;
+  --muted: #5c6b60;
+  --accent: #f2b84b;
+  --accent-hover: #ffca63;
+  --accent-border: #e5a93c;
+  --accent-text: #3a2a08;
+  --control: #ffffff;
+  --control-border: #d9ded8;
+  --hover: #f2f4f0;
+  --input-bg: #ffffff;
+  --input-border: #d9ded8;
+  --danger: #b3452f;
+  --card-shadow: 0 1px 3px rgba(30, 40, 33, 0.06);
+  --card-hover-border: #b9c4ba;
+  --board-frame: #cfd6d1;
+  --board-bg:
+    radial-gradient(#d9ded9 1px, transparent 1.4px) 0 0 / 24px 24px,
+    #fdfdfb;
+  --board-shadow: inset 0 1px 6px rgba(30, 40, 33, 0.08), 0 2px 10px rgba(30, 40, 33, 0.1);
+  --board-empty: #8a978d;
+  --note-text: #2a2a1f;
+  --note-faint: rgba(0, 0, 0, 0.35);
+  --note-line: rgba(0, 0, 0, 0.2);
+  --note-dim: rgba(0, 0, 0, 0.45);
+  --note-shadow: 0 4px 10px rgba(30, 40, 33, 0.16);
+  --chip-bg: rgba(0, 0, 0, 0.06);
+  --chip-text: #4a4a3a;
+  --doneby-text: #2e7d4f;
+  --doneby-bg: rgba(46, 125, 79, 0.12);
+  --check-on: #2e7d4f;
+}
+
+:root[data-theme="neon"] {
+  --bg: #0e1015;
+  --panel: #151824;
+  --panel-border: #262b3a;
+  --text: #e6e8f0;
+  --muted: #8b93a8;
+  --accent: #22d3ee;
+  --accent-hover: #67e8f9;
+  --accent-border: #22d3ee;
+  --accent-text: #062a31;
+  --control: #1b1f2d;
+  --control-border: #262b3a;
+  --hover: #232839;
+  --input-bg: #10131c;
+  --input-border: #2c3244;
+  --danger: #ff8fa0;
+  --card-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  --card-hover-border: #3b4257;
+  --board-frame: #1c2030;
+  --board-bg:
+    linear-gradient(rgba(34, 211, 238, 0.05) 1px, transparent 1px) 0 0 / 100% 32px,
+    linear-gradient(90deg, rgba(34, 211, 238, 0.05) 1px, transparent 1px) 0 0 / 32px 100%,
+    #0a0c12;
+  --board-shadow: inset 0 0 60px rgba(0, 0, 0, 0.6), 0 2px 12px rgba(0, 0, 0, 0.5);
+  --board-empty: #4c5468;
+  --note-text: #e6e8f0;
+  --note-faint: rgba(255, 255, 255, 0.35);
+  --note-line: rgba(255, 255, 255, 0.14);
+  --note-dim: rgba(255, 255, 255, 0.5);
+  --note-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --chip-bg: rgba(255, 255, 255, 0.08);
+  --chip-text: #c3c9d9;
+  --doneby-text: #4ade80;
+  --doneby-bg: rgba(74, 222, 128, 0.14);
+  --check-on: #2e7d4f;
+}
+
 body {
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  background: #e8eae6;
-  color: #26302a;
+  background: var(--bg);
+  color: var(--text);
 }
 
 .screen { display: flex; flex-direction: column; height: 100%; }
@@ -17,8 +131,8 @@ body {
   align-items: center;
   gap: 10px;
   padding: 10px 16px;
-  background: #ffffff;
-  border-bottom: 1px solid #d9ded8;
+  background: var(--panel);
+  border-bottom: 1px solid var(--panel-border);
 }
 .topbar h1 {
   flex: 1;
@@ -32,23 +146,24 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.logo-pin { color: #e0812c; transform: rotate(30deg); flex-shrink: 0; }
+.logo-pin { color: var(--accent); transform: rotate(30deg); flex-shrink: 0; }
 
 .working-as {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   font-size: 0.82rem;
-  color: #5c6b60;
+  color: var(--muted);
   white-space: nowrap;
 }
-.working-as select {
+.working-as select, .theme-switch {
   padding: 5px 8px;
   border-radius: 8px;
-  border: 1px solid #d9ded8;
-  background: #f6f7f4;
-  color: #26302a;
+  border: 1px solid var(--control-border);
+  background: var(--control);
+  color: var(--text);
   font-size: 0.82rem;
+  cursor: pointer;
 }
 
 /* -------------------------------- page --------------------------------- */
@@ -56,11 +171,11 @@ body {
 .page-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
 .page-head h2 { margin: 0; font-size: 1.2rem; }
 
-.empty { text-align: center; padding: 48px 0; color: #5c6b60; }
+.empty { text-align: center; padding: 48px 0; color: var(--muted); }
 .empty .btn { margin-top: 8px; }
-.hint { color: #5c6b60; font-size: 0.85rem; }
-.error { color: #b3452f; font-size: 0.85rem; margin: 0; }
-.muted { color: #5c6b60; font-weight: normal; font-size: 0.8rem; }
+.hint { color: var(--muted); font-size: 0.85rem; }
+.error { color: var(--danger); font-size: 0.85rem; margin: 0; }
+.muted { color: var(--muted); font-weight: normal; font-size: 0.8rem; }
 .dot { margin: 0 6px; }
 
 /* ------------------------------- buttons ------------------------------- */
@@ -69,20 +184,20 @@ body {
   align-items: center;
   gap: 6px;
   padding: 7px 14px;
-  border: 1px solid #d9ded8;
+  border: 1px solid var(--control-border);
   border-radius: 8px;
-  background: #ffffff;
-  color: #26302a;
+  background: var(--control);
+  color: var(--text);
   font-size: 0.88rem;
   cursor: pointer;
   white-space: nowrap;
 }
-.btn:hover { background: #f2f4f0; }
-.btn.primary { background: #f2b84b; border-color: #e5a93c; color: #3a2a08; font-weight: 600; }
-.btn.primary:hover { background: #ffca63; }
+.btn:hover { background: var(--hover); }
+.btn.primary { background: var(--accent); border-color: var(--accent-border); color: var(--accent-text); font-weight: 600; }
+.btn.primary:hover { background: var(--accent-hover); }
 .btn.ghost { background: transparent; border-color: transparent; }
-.btn.ghost:hover { background: #f2f4f0; }
-.btn.danger { color: #b3452f; }
+.btn.ghost:hover { background: var(--hover); }
+.btn.danger { color: var(--danger); }
 
 .icon-btn {
   display: inline-flex;
@@ -96,7 +211,7 @@ body {
   border-radius: 6px;
   opacity: 0.7;
 }
-.icon-btn:hover { opacity: 1; background: rgba(0, 0, 0, 0.07); }
+.icon-btn:hover { opacity: 1; background: rgba(125, 125, 125, 0.18); }
 
 /* -------------------------------- cards -------------------------------- */
 .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
@@ -104,21 +219,28 @@ body {
   text-align: left;
   padding: 16px;
   border-radius: 10px;
-  border: 1px solid #d9ded8;
-  background: #ffffff;
-  color: #26302a;
+  border: 1px solid var(--control-border);
+  background: var(--control);
+  color: var(--text);
   cursor: pointer;
-  box-shadow: 0 1px 3px rgba(30, 40, 33, 0.06);
+  box-shadow: var(--card-shadow);
 }
-.card:hover { border-color: #b9c4ba; transform: translateY(-1px); box-shadow: 0 3px 8px rgba(30, 40, 33, 0.1); }
+.card:hover { border-color: var(--card-hover-border); transform: translateY(-1px); }
 .card-title { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 6px; }
-.card-sub { display: flex; align-items: center; gap: 4px; font-size: 0.8rem; color: #5c6b60; }
-.card-title.dark, .card-sub.dark { color: #333; }
-.pinned-card { border: none; }
-.pin-badge { display: inline-flex; align-items: center; gap: 3px; margin-left: 10px; color: #c2410c; }
+.card-sub { display: flex; align-items: center; gap: 4px; font-size: 0.8rem; color: var(--muted); }
+.pin-badge { display: inline-flex; align-items: center; gap: 3px; margin-left: 10px; color: var(--accent); }
+
+/* Pinned-tab cards borrow the note's color the same way notes do. */
+.pinned-card { background: var(--note-color); border: 1px solid transparent; box-shadow: var(--note-shadow); }
+.pinned-card .card-title.dark, .pinned-card .card-sub.dark { color: var(--note-text); }
+:root[data-theme="neon"] .pinned-card {
+  background: #13161f;
+  border-color: var(--note-color);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--note-color) 35%, transparent);
+}
 
 /* -------------------------------- tabs --------------------------------- */
-.tabs { display: flex; gap: 4px; margin-bottom: 18px; border-bottom: 1px solid #d9ded8; }
+.tabs { display: flex; gap: 4px; margin-bottom: 18px; border-bottom: 1px solid var(--panel-border); }
 .tab {
   display: inline-flex;
   align-items: center;
@@ -126,12 +248,12 @@ body {
   padding: 8px 14px;
   background: transparent;
   border: none;
-  color: #5c6b60;
+  color: var(--muted);
   font-size: 0.9rem;
   cursor: pointer;
   border-bottom: 2px solid transparent;
 }
-.tab.active { color: #26302a; border-bottom-color: #e0812c; }
+.tab.active { color: var(--text); border-bottom-color: var(--accent); }
 
 /* -------------------------------- forms -------------------------------- */
 .inline-form { display: flex; gap: 8px; margin-bottom: 16px; }
@@ -140,9 +262,9 @@ body {
   max-width: 340px;
   padding: 8px 12px;
   border-radius: 8px;
-  border: 1px solid #d9ded8;
-  background: #ffffff;
-  color: #26302a;
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--text);
 }
 
 .member-list { list-style: none; padding: 0; margin: 0; max-width: 340px; }
@@ -151,20 +273,20 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 8px 12px;
-  border-bottom: 1px solid #e4e8e2;
+  border-bottom: 1px solid var(--panel-border);
 }
 
 /* -------------------------------- modal -------------------------------- */
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(30, 40, 33, 0.4);
+  background: rgba(0, 0, 0, 0.55);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 50;
 }
-.modal { background: #ffffff; border: 1px solid #d9ded8; border-radius: 12px; padding: 20px; width: min(400px, 92vw); box-shadow: 0 12px 40px rgba(30, 40, 33, 0.2); }
+.modal { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; padding: 20px; width: min(400px, 92vw); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3); }
 .modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
 .modal-head h3 { margin: 0; font-size: 1rem; }
 
@@ -173,34 +295,30 @@ body {
 .form input {
   padding: 9px 12px;
   border-radius: 8px;
-  border: 1px solid #d9ded8;
-  background: #ffffff;
-  color: #26302a;
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--text);
   font-size: 0.9rem;
 }
 .form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 
-/* ------------------------------ whiteboard ------------------------------ */
-/* The board: a white surface with a faint dot grid inside an aluminum-ish
-   frame, like the whiteboard in a shared office. */
+/* -------------------------------- board -------------------------------- */
 .board {
   flex: 1;
   position: relative;
   overflow: auto;
   margin: 14px;
   border-radius: 10px;
-  border: 6px solid #cfd6d1;
-  background:
-    radial-gradient(#d9ded9 1px, transparent 1.4px) 0 0 / 24px 24px,
-    #fdfdfb;
-  box-shadow: inset 0 1px 6px rgba(30, 40, 33, 0.08), 0 2px 10px rgba(30, 40, 33, 0.1);
+  border: 6px solid var(--board-frame);
+  background: var(--board-bg);
+  box-shadow: var(--board-shadow);
 }
 .board-empty {
   position: absolute;
   top: 40%;
   width: 100%;
   text-align: center;
-  color: #8a978d;
+  color: var(--board-empty);
 }
 
 /* Uniform note layout: every note is the same width and stretches to the
@@ -218,8 +336,6 @@ body {
 .notes-grid > .note { pointer-events: auto; }
 
 /* ----------------------------- decorations ------------------------------ */
-/* Uploaded images/GIFs float behind the notes and can be dragged anywhere
-   on the board and resized from the corner handle. */
 .decoration {
   position: absolute;
   z-index: 0;
@@ -233,9 +349,9 @@ body {
   position: absolute;
   top: -8px;
   right: -8px;
-  background: #ffffff;
-  border: 1px solid #d9ded8;
-  box-shadow: 0 1px 4px rgba(30, 40, 33, 0.2);
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
   visibility: hidden;
 }
 .decoration:hover .decor-delete { visibility: visible; }
@@ -246,8 +362,8 @@ body {
   width: 14px;
   height: 14px;
   border-radius: 4px;
-  background: #ffffff;
-  border: 1px solid #b9c4ba;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
   cursor: nwse-resize;
   visibility: hidden;
 }
@@ -255,16 +371,31 @@ body {
 
 /* ------------------------------ sticky note ---------------------------- */
 .note {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-height: 220px;
   padding: 10px 12px 8px;
   border-radius: 3px;
-  box-shadow: 0 4px 10px rgba(30, 40, 33, 0.16);
-  color: #2a2a1f;
+  background: var(--note-color);
+  border: 1px solid transparent;
+  box-shadow: var(--note-shadow);
+  color: var(--note-text);
 }
 
-.note { position: relative; }
+/* Neon notes: dark body, the note's color becomes its glow. These rules live
+   at element scope because --note-color is set per-note (inline style). */
+:root[data-theme="neon"] .note {
+  background: #13161f;
+  border-color: var(--note-color);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--note-color) 40%, transparent),
+              0 4px 12px rgba(0, 0, 0, 0.5);
+}
+:root[data-theme="neon"] .note-title {
+  color: var(--note-color);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--note-color) 45%, transparent);
+}
+
 .note-pin-flag {
   position: absolute;
   top: -10px;
@@ -279,16 +410,16 @@ body {
   font-weight: 700;
   padding: 2px 9px;
   border-radius: 999px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
   white-space: nowrap;
 }
 
 .note-toolbar { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; }
-.note-toolbar .icon-btn.pinned { color: #c0392b; opacity: 1; }
+.note-toolbar .icon-btn.pinned { color: #d9534f; opacity: 1; }
 
 .swatches { display: flex; gap: 3px; flex: 1; justify-content: center; }
 .swatch { width: 13px; height: 13px; border-radius: 50%; border: 1px solid rgba(0, 0, 0, 0.25); cursor: pointer; padding: 0; }
-.swatch.current { outline: 2px solid rgba(0, 0, 0, 0.45); }
+.swatch.current { outline: 2px solid var(--note-faint); }
 
 .pin-wrap { position: relative; }
 .pin-menu {
@@ -296,9 +427,11 @@ body {
   top: 26px;
   left: 0;
   z-index: 20;
-  background: #fff;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--panel-border);
   border-radius: 8px;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
   padding: 4px;
   min-width: 150px;
 }
@@ -310,14 +443,15 @@ body {
   padding: 7px 10px;
   border: none;
   background: transparent;
+  color: var(--text);
   border-radius: 6px;
   font-size: 0.82rem;
   cursor: pointer;
   text-align: left;
 }
-.pin-menu button:hover { background: #f1f1f1; }
-.pin-menu button.danger { color: #c0392b; }
-.pin-menu-hint { padding: 7px 10px; font-size: 0.75rem; color: #777; }
+.pin-menu button:hover { background: var(--hover); }
+.pin-menu button.danger { color: var(--danger); }
+.pin-menu-hint { padding: 7px 10px; font-size: 0.75rem; color: var(--muted); }
 
 .note-title {
   width: 100%;
@@ -327,10 +461,10 @@ body {
   font-size: 0.95rem;
   color: inherit;
   padding: 2px 0 6px;
-  border-bottom: 1px dashed rgba(0, 0, 0, 0.2);
+  border-bottom: 1px dashed var(--note-line);
   outline: none;
 }
-.note-title::placeholder { color: rgba(0, 0, 0, 0.35); }
+.note-title::placeholder { color: var(--note-faint); }
 
 .note-items { list-style: none; margin: 6px 0 0; padding: 0; flex: 1; }
 .note-items li { display: flex; align-items: center; gap: 7px; padding: 3px 0; font-size: 0.85rem; }
@@ -340,10 +474,10 @@ body {
 /* Who's on a step (before it's done) and who handled it (after). */
 .assignee {
   border: none;
-  background: rgba(0, 0, 0, 0.06);
+  background: var(--chip-bg);
   border-radius: 6px;
   font-size: 0.72rem;
-  color: #4a4a3a;
+  color: var(--chip-text);
   padding: 2px 4px;
   max-width: 76px;
   cursor: pointer;
@@ -351,8 +485,8 @@ body {
 .done-by {
   font-size: 0.72rem;
   font-weight: 600;
-  color: #2e7d4f;
-  background: rgba(46, 125, 79, 0.12);
+  color: var(--doneby-text);
+  background: var(--doneby-bg);
   border-radius: 6px;
   padding: 2px 6px;
   white-space: nowrap;
@@ -365,7 +499,7 @@ body {
   width: 16px;
   height: 16px;
   flex-shrink: 0;
-  border: 1.5px solid rgba(0, 0, 0, 0.4);
+  border: 1.5px solid var(--note-faint);
   border-radius: 4px;
   background: transparent;
   cursor: pointer;
@@ -375,7 +509,17 @@ body {
   padding: 0;
   color: #fff;
 }
-.check.checked { background: #2e7d4f; border-color: #2e7d4f; }
+/* Checked steps light up — in neon they glow the note's color. */
+.check.checked {
+  background: var(--check-on);
+  border-color: var(--check-on);
+}
+:root[data-theme="neon"] .check.checked {
+  background: var(--note-color);
+  border-color: var(--note-color);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--note-color) 70%, transparent);
+  color: #0a0c12;
+}
 
 .note-add input {
   width: 100%;
@@ -386,9 +530,9 @@ body {
   padding: 5px 0 2px;
   outline: none;
 }
-.note-add input::placeholder { color: rgba(0, 0, 0, 0.3); }
+.note-add input::placeholder { color: var(--note-faint); }
 
-.note-progress { font-size: 0.7rem; color: rgba(0, 0, 0, 0.45); text-align: right; margin-top: 4px; }
+.note-progress { font-size: 0.7rem; color: var(--note-dim); text-align: right; margin-top: 4px; }
 
 /* Small screens: keep the top bar usable. */
 @media (max-width: 560px) {

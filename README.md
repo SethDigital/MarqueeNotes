@@ -21,6 +21,7 @@ GitHub Pages) before moving to a proper backend.
 | Pinning | Pin a note for the whole team or a specific member |
 | Pinned tab | Team-wide view of every pinned note, filterable by member |
 | Decorations | Upload images or transparent GIFs and place them anywhere on the board |
+| Themes | Corkboard (default), Whiteboard, or Neon dark mode with glowing notes — pick in the top bar |
 | Demo data | "Load demo data" on first launch to look around |
 
 ## Run locally

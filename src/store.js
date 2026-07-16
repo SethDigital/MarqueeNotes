@@ -39,6 +39,20 @@ export function save(data) {
   localStorage.setItem(KEY, JSON.stringify(data));
 }
 
+// Board theme — a per-browser preference, like picking where the real board
+// hangs. "cork" is the classic default.
+export const THEMES = { cork: "Corkboard", white: "Whiteboard", neon: "Neon" };
+
+export function getTheme() {
+  const t = localStorage.getItem("marquee-notes-theme");
+  return THEMES[t] ? t : "cork";
+}
+
+export function setTheme(t) {
+  localStorage.setItem("marquee-notes-theme", t);
+  document.documentElement.dataset.theme = t;
+}
+
 // "Working as" — a lightweight per-browser name so checked-off steps can say
 // who handled them. Deliberately not authentication; it's the demo-phase
 // equivalent of initialing your work on a shared whiteboard.

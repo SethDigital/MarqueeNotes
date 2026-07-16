@@ -5,6 +5,7 @@ import {
 import { load, save, uid, getMe, setMe, demoData } from "./store.js";
 import BoardView from "./BoardView.jsx";
 import WorkingAs from "./WorkingAs.jsx";
+import ThemeSwitcher from "./ThemeSwitcher.jsx";
 
 export default function App() {
   const [data, setData] = useState(load);
@@ -69,6 +70,7 @@ function HomeScreen({ teams, onAddTeam, onOpenTeam, onSeedDemo }) {
     <div className="screen">
       <header className="topbar">
         <h1><Pin size={22} className="logo-pin" /> MarqueeNotes</h1>
+        <ThemeSwitcher />
       </header>
 
       <main className="page">
@@ -189,6 +191,7 @@ function TeamScreen({ team, onBack, onOpenProject, onUpdate, onDelete }) {
         <button className="btn ghost" onClick={onBack}><ArrowLeft size={16} /> Teams</button>
         <h1>{team.name}</h1>
         <WorkingAs team={team} me={me} onChange={changeMe} />
+        <ThemeSwitcher />
         <button
           className="btn ghost danger"
           title="Delete this team"
@@ -251,7 +254,7 @@ function TeamScreen({ team, onBack, onOpenProject, onUpdate, onDelete }) {
             {pinned.length === 0 && <p className="hint">Nothing pinned yet. Pin a note from any board to flag it here.</p>}
             <div className="card-grid">
               {pinned.map(({ project, note }) => (
-                <button key={note.id} className="card pinned-card" style={{ background: note.color }}
+                <button key={note.id} className="card pinned-card" style={{ "--note-color": note.color }}
                   onClick={() => onOpenProject(project.id)}>
                   <div className="card-title dark">
                     <Pin size={14} /> {note.title || "Untitled note"}

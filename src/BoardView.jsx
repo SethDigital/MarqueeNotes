@@ -5,6 +5,7 @@ import {
   fileToDataURL, newDecoration, MAX_DECORATION_BYTES, DECORATION_TYPES,
 } from "./store.js";
 import WorkingAs from "./WorkingAs.jsx";
+import ThemeSwitcher from "./ThemeSwitcher.jsx";
 
 export default function BoardView({ team, project, onBack, onUpdateProject }) {
   const fileRef = useRef(null);
@@ -66,6 +67,7 @@ export default function BoardView({ team, project, onBack, onUpdateProject }) {
         <button className="btn ghost" onClick={onBack}><ArrowLeft size={16} /> {team.name}</button>
         <h1>{project.name}</h1>
         <WorkingAs team={team} me={me} onChange={changeMe} />
+        <ThemeSwitcher />
         {/* Hidden input backs the decoration upload button */}
         <input
           ref={fileRef}
@@ -189,7 +191,7 @@ function StickyNote({ note, members, me, onChange, onDelete }) {
     onChange((n) => ({ ...n, items: n.items.map((i) => (i.id === itemId ? fn(i) : i)) }));
 
   return (
-    <div className="note" style={{ background: note.color, transform: `rotate(${note.rot}deg)` }}>
+    <div className="note" style={{ "--note-color": note.color, transform: `rotate(${note.rot}deg)` }}>
       {note.pin && (
         <div className="note-pin-flag">
           <Pin size={12} /> {note.pin.to === "team" ? "Team" : note.pin.member}
