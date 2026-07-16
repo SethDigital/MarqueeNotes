@@ -54,3 +54,9 @@ One-time setup:
   `localStorage` quota; the backend phase moves them to real file storage.
 - All persistence goes through [`src/store.js`](src/store.js), so swapping in a real
   API later means changing only that file.
+
+## Phase 2 — real backend (scaffolded)
+
+The Supabase schema for shared boards, roles, enforced per-team visibility, and
+real-time sync is scaffolded but not yet wired into the UI — see
+[`docs/BACKEND.md`](docs/BACKEND.md). The app runs fine without it.
