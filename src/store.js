@@ -8,27 +8,52 @@
 //     projects: [{
 //       id, name,
 //       notes: [{
-//         id, title, color, rot,
-//         items: [{ id, text, done, assignee, doneBy }],
-//         pin: null | { to: "team" } | { to: "member", member }
+//         id, title, color, rot, x, y,          // x/y drive free-drag positioning
+//         createdAt, deadlineAt,                 // ISO strings; deadlineAt may be null
+//         items: [{ id, text, done, assignee, assignedBy, doneBy }],
+//         pin: null | { to: "team" } | { to: "member", member },
+//         tunnels: [string]                      // names who pinned this to their dashboard
 //       }],
 //       decorations: [{ id, src, x, y, w }]
 //     }]
 //   }]
 // }
+//
+// NOTE ON IDENTITY: assignee / assignedBy / doneBy / tunnels are name strings
+// here because the demo has no real accounts. Under the backend phase they
+// become user IDs and the shape is otherwise unchanged.
 
 const KEY = "marquee-notes-v1";
 
 export const uid = () => Math.random().toString(36).slice(2, 10);
 
+// Bring any note up to the current shape. Runs on load so saves from earlier
+// versions (no x/y, no deadlines, no tunnels) keep working instead of breaking.
+function migrateNote(n, i) {
+  return {
+    rot: 0,
+    pin: null,
+    ...n,
+    x: typeof n.x === "number" ? n.x : 28 + (i % 4) * 260,
+    y: typeof n.y === "number" ? n.y : 28 + Math.floor(i / 4) * 250,
+    createdAt: n.createdAt || new Date().toISOString(),
+    deadlineAt: n.deadlineAt || null,
+    tunnels: Array.isArray(n.tunnels) ? n.tunnels : [],
+    items: (n.items || []).map((it) => ({
+      assignee: null, assignedBy: null, doneBy: null, ...it,
+    })),
+  };
+}
+
 export function load() {
   try {
     const data = JSON.parse(localStorage.getItem(KEY));
     if (data && Array.isArray(data.teams)) {
-      // Normalize saves from earlier versions: decorations arrived later, and
-      // passwordHash may linger on old teams (harmless, ignored).
       for (const t of data.teams)
-        for (const p of t.projects) p.decorations = p.decorations || [];
+        for (const p of t.projects) {
+          p.decorations = p.decorations || [];
+          p.notes = (p.notes || []).map(migrateNote);
+        }
       return data;
     }
   } catch {}
@@ -67,9 +92,24 @@ export function newNote(index) {
     title: "",
     color: NOTE_COLORS[index % NOTE_COLORS.length],
     rot: Math.round((Math.random() * 3 - 1.5) * 10) / 10,
+    x: 28 + (index % 4) * 260,
+    y: 28 + Math.floor(index / 4) * 250,
+    createdAt: new Date().toISOString(),
+    deadlineAt: null,
     items: [],
     pin: null,
+    tunnels: [],
   };
+}
+
+// Arrange notes into a tidy grid — the "Tidy up" button. Free-drag is the
+// default; this snaps everything back into columns without losing any notes.
+export function tidyPositions(count, boardWidth) {
+  const cols = Math.max(1, Math.floor((boardWidth - 28) / 260));
+  return Array.from({ length: count }, (_, i) => ({
+    x: 28 + (i % cols) * 260,
+    y: 28 + Math.floor(i / cols) * 250,
+  }));
 }
 
 /* --------------------- decoration upload framework ---------------------- */
@@ -98,14 +138,22 @@ export function newDecoration(src, index) {
 
 /* ------------------------------ demo data ------------------------------- */
 
+// Relative deadlines so the countdown always looks live in a demo.
+const daysFromNow = (d) => new Date(Date.now() + d * 86400000).toISOString();
+
 export function demoData() {
-  const note = (title, color, items, pin = null) => ({
-    id: uid(), title, color,
+  const note = (title, color, x, y, deadlineAt, items, extra = {}) => ({
+    id: uid(), title, color, x, y,
     rot: Math.round((Math.random() * 3 - 1.5) * 10) / 10,
-    items: items.map(([text, done, assignee, doneBy]) => ({
-      id: uid(), text, done, assignee: assignee || null, doneBy: doneBy || null,
+    createdAt: daysFromNow(-3),
+    deadlineAt,
+    items: items.map(([text, done, assignee, assignedBy, doneBy]) => ({
+      id: uid(), text, done,
+      assignee: assignee || null, assignedBy: assignedBy || null, doneBy: doneBy || null,
     })),
-    pin,
+    pin: null,
+    tunnels: [],
+    ...extra,
   });
   return {
     teams: [
@@ -119,16 +167,20 @@ export function demoData() {
             name: "Website Refresh",
             decorations: [],
             notes: [
-              note("Homepage hero", "#fef08a", [
-                ["New tagline copy", true, "Avery", "Avery"],
-                ["Hero image options", false, "Sam"],
+              // Homepage hero: Avery's step is done (Completed), and Avery
+              // handed "Hero image options" to Sam (Distributed).
+              note("Homepage hero", "#fef08a", 40, 40, daysFromNow(-1), [
+                ["New tagline copy", true, "Avery", "Avery", "Avery"],
+                ["Hero image options", false, "Sam", "Avery"],
                 ["Mobile layout", false],
-              ], { to: "team" }),
-              note("Pricing page", "#bae6fd", [
-                ["Compare-plans table", false, "Avery"],
+              ], { pin: { to: "team" } }),
+              // Pricing page: assigned to Avery and not done (Working On), and
+              // tunneled onto Avery's dashboard (Pinned).
+              note("Pricing page", "#bae6fd", 330, 120, daysFromNow(3), [
+                ["Compare-plans table", false, "Avery", "Avery"],
                 ["FAQ section", false],
-              ], { to: "member", member: "Avery" }),
-              note("Ideas", "#bbf7d0", [
+              ], { pin: { to: "member", member: "Avery" }, tunnels: ["Avery"] }),
+              note("Ideas", "#bbf7d0", 630, 60, null, [
                 ["Dark mode toggle", false],
                 ["Customer logos strip", false],
               ]),
@@ -139,14 +191,35 @@ export function demoData() {
             name: "Spring Campaign",
             decorations: [],
             notes: [
-              note("Social posts", "#fbcfe8", [
-                ["Draft 5 captions", true, "Sam", "Sam"],
+              note("Social posts", "#fbcfe8", 60, 60, daysFromNow(5), [
+                ["Draft 5 captions", true, "Sam", "Sam", "Sam"],
                 ["Schedule week 1", false, "Sam"],
-              ], { to: "member", member: "Sam" }),
+              ], { pin: { to: "member", member: "Sam" } }),
             ],
           },
         ],
       },
     ],
   };
+}
+
+/* --------------------- personal dashboard derivation -------------------- */
+// The four dashboard columns are a query over the team's notes for one person.
+// Only "Pinned" is an explicit action (a tunnel); the rest fall out of who is
+// assigned to what. See the architecture notes for why these are derived.
+export function selectDashboard(team, me) {
+  const cols = { pinned: [], working: [], completed: [], distributed: [] };
+  if (!me) return cols;
+  for (const project of team.projects)
+    for (const note of project.notes) {
+      const entry = { note, project };
+      const mine = note.items.filter((i) => i.assignee === me);
+
+      if (note.tunnels.includes(me)) cols.pinned.push(entry);
+      if (mine.some((i) => !i.done)) cols.working.push(entry);
+      if (mine.length && mine.every((i) => i.done)) cols.completed.push(entry);
+      if (note.items.some((i) => i.assignedBy === me && i.assignee && i.assignee !== me))
+        cols.distributed.push(entry);
+    }
+  return cols;
 }

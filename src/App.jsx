@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from "react";
 import {
-  Plus, Users, ArrowLeft, Pin, Trash2, X, FolderOpen, Sparkles,
+  Plus, Users, ArrowLeft, Pin, Trash2, X, FolderOpen, Sparkles, LayoutDashboard,
 } from "lucide-react";
 import { load, save, uid, getMe, setMe, demoData } from "./store.js";
 import BoardView from "./BoardView.jsx";
 import WorkingAs from "./WorkingAs.jsx";
 import ThemeSwitcher from "./ThemeSwitcher.jsx";
+import PersonalDashboard from "./PersonalDashboard.jsx";
 
 export default function App() {
   const [data, setData] = useState(load);
@@ -208,6 +209,9 @@ function TeamScreen({ team, onBack, onOpenProject, onUpdate, onDelete }) {
           <button className={tab === "projects" ? "tab active" : "tab"} onClick={() => setTab("projects")}>
             <FolderOpen size={15} /> Projects
           </button>
+          <button className={tab === "dashboard" ? "tab active" : "tab"} onClick={() => setTab("dashboard")}>
+            <LayoutDashboard size={15} /> My Dashboard
+          </button>
           <button className={tab === "pinned" ? "tab active" : "tab"} onClick={() => setTab("pinned")}>
             <Pin size={15} /> Pinned
           </button>
@@ -237,6 +241,10 @@ function TeamScreen({ team, onBack, onOpenProject, onUpdate, onDelete }) {
               ))}
             </div>
           </>
+        )}
+
+        {tab === "dashboard" && (
+          <PersonalDashboard team={team} me={me} onOpenProject={onOpenProject} />
         )}
 
         {tab === "pinned" && (

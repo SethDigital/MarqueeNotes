@@ -14,10 +14,13 @@ GitHub Pages) before moving to a proper backend.
 |---|---|
 | Teams | Independent workspaces — open one and you're in |
 | Projects | Each team contains any number of project boards |
-| Sticky notes | Click **New note**; notes sit in a tidy, uniform grid |
+| Sticky notes | Click **New note**; drag any note anywhere by its grip, or hit **Tidy up** to line them up |
 | Steps (checklists) | Each note has its own step list — add steps, check them off |
 | Who's on what | Assign a teammate to any step; done steps show who handled them |
+| Deadlines | Give a note a due date and it shows a live countdown (turns amber when close, red when overdue) |
 | Working as | Pick your name in the top bar; steps you check off carry it |
+| Tunneling | Bookmark a team note onto your own **My Dashboard** without removing it from the board |
+| My Dashboard | Your personal to-do view: Pinned, Working On, Completed, and Distributed |
 | Pinning | Pin a note for the whole team or a specific member |
 | Pinned tab | Team-wide view of every pinned note, filterable by member |
 | Decorations | Upload images or transparent GIFs and place them anywhere on the board |

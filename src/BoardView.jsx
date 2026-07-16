@@ -1,13 +1,18 @@
 import React, { useRef, useState } from "react";
-import { Plus, ArrowLeft, Pin, PinOff, Trash2, Check, ImagePlus, X } from "lucide-react";
 import {
-  uid, newNote, NOTE_COLORS, getMe, setMe,
+  Plus, ArrowLeft, Pin, PinOff, Trash2, Check, ImagePlus, X,
+  GripVertical, Clock, Bookmark, LayoutGrid,
+} from "lucide-react";
+import {
+  uid, newNote, NOTE_COLORS, getMe, setMe, tidyPositions,
   fileToDataURL, newDecoration, MAX_DECORATION_BYTES, DECORATION_TYPES,
 } from "./store.js";
 import WorkingAs from "./WorkingAs.jsx";
 import ThemeSwitcher from "./ThemeSwitcher.jsx";
+import Deadline from "./Deadline.jsx";
 
 export default function BoardView({ team, project, onBack, onUpdateProject }) {
+  const canvasRef = useRef(null);
   const fileRef = useRef(null);
   const [me, setMeState] = useState(() => getMe(team.id));
 
@@ -28,13 +33,22 @@ export default function BoardView({ team, project, onBack, onUpdateProject }) {
   const deleteNote = (noteId) =>
     onUpdateProject((p) => ({ ...p, notes: p.notes.filter((n) => n.id !== noteId) }));
 
+  // "Tidy up" — snap the free-floating notes back into neat columns.
+  const tidyUp = () => {
+    const width = canvasRef.current?.clientWidth || 1200;
+    onUpdateProject((p) => {
+      const slots = tidyPositions(p.notes.length, width);
+      return { ...p, notes: p.notes.map((n, i) => ({ ...n, x: slots[i].x, y: slots[i].y })) };
+    });
+  };
+
   /* ------------------- decoration upload framework -------------------- */
-  // "Add decoration" opens a hidden file input. The chosen image (PNG, JPEG,
-  // WebP, or transparent GIF) is read as a data URL and saved with the board,
-  // then rendered as a draggable, resizable sticker behind the notes.
+  // "Decorate" opens a hidden file input. The chosen image (PNG, JPEG, WebP,
+  // or transparent GIF) is read as a data URL and saved with the board, then
+  // rendered as a draggable, resizable sticker behind the notes.
   const uploadDecoration = async (e) => {
     const file = e.target.files?.[0];
-    e.target.value = ""; // allow re-picking the same file later
+    e.target.value = "";
     if (!file) return;
     if (file.size > MAX_DECORATION_BYTES) {
       window.alert(
@@ -68,7 +82,9 @@ export default function BoardView({ team, project, onBack, onUpdateProject }) {
         <h1>{project.name}</h1>
         <WorkingAs team={team} me={me} onChange={changeMe} />
         <ThemeSwitcher />
-        {/* Hidden input backs the decoration upload button */}
+        <button className="btn" title="Line the notes up in neat columns" onClick={tidyUp}>
+          <LayoutGrid size={16} /> Tidy up
+        </button>
         <input
           ref={fileRef}
           type="file"
@@ -83,22 +99,21 @@ export default function BoardView({ team, project, onBack, onUpdateProject }) {
       </header>
 
       <div className="board">
-        {/* Decorations sit behind the notes; the grid lets clicks fall
-            through to them everywhere except on the notes themselves. */}
-        {project.decorations.map((d) => (
-          <Decoration
-            key={d.id}
-            decor={d}
-            onChange={(fn) => updateDecoration(d.id, fn)}
-            onDelete={() => deleteDecoration(d.id)}
-          />
-        ))}
+        {/* The canvas is the positioned surface notes and decorations live on. */}
+        <div className="canvas" ref={canvasRef}>
+          {project.decorations.map((d) => (
+            <Decoration
+              key={d.id}
+              decor={d}
+              onChange={(fn) => updateDecoration(d.id, fn)}
+              onDelete={() => deleteDecoration(d.id)}
+            />
+          ))}
 
-        {project.notes.length === 0 && (
-          <p className="board-empty">A clean board. Stick up the first note — everyone opens to the same wall.</p>
-        )}
+          {project.notes.length === 0 && (
+            <p className="board-empty">A clean board. Stick up the first note, then drag it anywhere.</p>
+          )}
 
-        <div className="notes-grid">
           {project.notes.map((note) => (
             <StickyNote
               key={note.id}
@@ -119,7 +134,7 @@ export default function BoardView({ team, project, onBack, onUpdateProject }) {
 // A decoration is a floating image the user can drag anywhere on the board
 // and resize from its corner handle. Stored per-project in store.js.
 function Decoration({ decor, onChange, onDelete }) {
-  const [live, setLive] = useState(null); // {x, y, w} while dragging/resizing
+  const [live, setLive] = useState(null);
 
   const track = (e, apply) => {
     e.preventDefault();
@@ -143,13 +158,8 @@ function Decoration({ decor, onChange, onDelete }) {
 
   const startDrag = (e) => {
     if (e.target.closest("button")) return;
-    track(e, (dx, dy) => ({
-      x: Math.max(0, decor.x + dx),
-      y: Math.max(0, decor.y + dy),
-      w: decor.w,
-    }));
+    track(e, (dx, dy) => ({ x: Math.max(0, decor.x + dx), y: Math.max(0, decor.y + dy), w: decor.w }));
   };
-
   const startResize = (e) =>
     track(e, (dx) => ({ x: decor.x, y: decor.y, w: Math.max(48, decor.w + dx) }));
 
@@ -172,17 +182,48 @@ function Decoration({ decor, onChange, onDelete }) {
 /* ---------------------------- sticky note ------------------------------- */
 
 function StickyNote({ note, members, me, onChange, onDelete }) {
+  const rootRef = useRef(null);
+  const [live, setLive] = useState(null);      // transient position while dragging
   const [pinMenu, setPinMenu] = useState(false);
+  const [dateOpen, setDateOpen] = useState(false);
   const [newItem, setNewItem] = useState("");
 
   const doneCount = note.items.filter((i) => i.done).length;
+  const tunneled = me && note.tunnels.includes(me);
+
+  /* --- free drag: reposition the note anywhere on the canvas --- */
+  const startDrag = (e) => {
+    // Don't start a drag when grabbing a control — only the note body/handle.
+    if (e.target.closest("input,button,select,textarea,a,.swatch")) return;
+    e.preventDefault();
+    const canvas = rootRef.current.parentElement.getBoundingClientRect();
+    const grabX = e.clientX - canvas.left - note.x;
+    const grabY = e.clientY - canvas.top - note.y;
+    let latest = { x: note.x, y: note.y };
+    const move = (ev) => {
+      const c = rootRef.current.parentElement.getBoundingClientRect();
+      latest = {
+        x: Math.max(0, ev.clientX - c.left - grabX),
+        y: Math.max(0, ev.clientY - c.top - grabY),
+      };
+      setLive({ ...latest });
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      setLive(null);
+      onChange((n) => ({ ...n, x: latest.x, y: latest.y })); // persist final spot
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
 
   const addItem = () => {
     const text = newItem.trim();
     if (!text) return;
     onChange((n) => ({
       ...n,
-      items: [...n.items, { id: uid(), text, done: false, assignee: null, doneBy: null }],
+      items: [...n.items, { id: uid(), text, done: false, assignee: null, assignedBy: null, doneBy: null }],
     }));
     setNewItem("");
   };
@@ -190,8 +231,26 @@ function StickyNote({ note, members, me, onChange, onDelete }) {
   const updateItem = (itemId, fn) =>
     onChange((n) => ({ ...n, items: n.items.map((i) => (i.id === itemId ? fn(i) : i)) }));
 
+  // Tunnel this note onto my personal dashboard (a link, not a copy).
+  const toggleTunnel = () => {
+    if (!me) return window.alert("Pick who you are with the “You’re” menu up top, then you can tunnel notes to your dashboard.");
+    onChange((n) => ({
+      ...n,
+      tunnels: n.tunnels.includes(me) ? n.tunnels.filter((x) => x !== me) : [...n.tunnels, me],
+    }));
+  };
+
+  const setDeadline = (value) =>
+    onChange((n) => ({ ...n, deadlineAt: value ? new Date(value + "T23:59:59").toISOString() : null }));
+
+  const pos = live || note;
   return (
-    <div className="note" style={{ "--note-color": note.color, transform: `rotate(${note.rot}deg)` }}>
+    <div
+      ref={rootRef}
+      className={"note" + (live ? " dragging" : "")}
+      style={{ left: pos.x, top: pos.y, "--note-color": note.color, transform: `rotate(${note.rot}deg)` }}
+      onPointerDown={startDrag}
+    >
       {note.pin && (
         <div className="note-pin-flag">
           <Pin size={12} /> {note.pin.to === "team" ? "Team" : note.pin.member}
@@ -199,6 +258,7 @@ function StickyNote({ note, members, me, onChange, onDelete }) {
       )}
 
       <div className="note-toolbar">
+        <span className="note-grip" title="Drag to move"><GripVertical size={15} /></span>
         <div className="pin-wrap">
           <button
             className={"icon-btn" + (note.pin ? " pinned" : "")}
@@ -249,6 +309,8 @@ function StickyNote({ note, members, me, onChange, onDelete }) {
         onChange={(e) => onChange((n) => ({ ...n, title: e.target.value }))}
       />
 
+      {note.deadlineAt && <Deadline deadlineIso={note.deadlineAt} />}
+
       <ul className="note-items">
         {note.items.map((item) => (
           <li key={item.id} className={item.done ? "done" : ""}>
@@ -256,12 +318,7 @@ function StickyNote({ note, members, me, onChange, onDelete }) {
               className={"check" + (item.done ? " checked" : "")}
               title={item.done ? "Mark as not done" : me ? `Check off as ${me}` : "Check off"}
               onClick={() =>
-                updateItem(item.id, (i) => ({
-                  ...i,
-                  done: !i.done,
-                  // Stamp who handled it so teammates don't redo the step.
-                  doneBy: !i.done ? me || null : null,
-                }))
+                updateItem(item.id, (i) => ({ ...i, done: !i.done, doneBy: !i.done ? me || null : null }))
               }
             >
               {item.done && <Check size={11} />}
@@ -274,7 +331,14 @@ function StickyNote({ note, members, me, onChange, onDelete }) {
                 className="assignee"
                 title="Who's on this step?"
                 value={item.assignee || ""}
-                onChange={(e) => updateItem(item.id, (i) => ({ ...i, assignee: e.target.value || null }))}
+                onChange={(e) =>
+                  updateItem(item.id, (i) => ({
+                    ...i,
+                    assignee: e.target.value || null,
+                    // Record who handed it out, so it shows under their "Distributed".
+                    assignedBy: e.target.value ? me || null : null,
+                  }))
+                }
               >
                 <option value="">–</option>
                 {members.map((m) => (
@@ -307,8 +371,39 @@ function StickyNote({ note, members, me, onChange, onDelete }) {
         />
       </div>
 
-      {note.items.length > 0 && (
-        <div className="note-progress">{doneCount}/{note.items.length} done</div>
+      <div className="note-footer">
+        <div className="note-actions">
+          <button
+            className={"icon-btn" + (note.deadlineAt ? " on" : "")}
+            title="Set a deadline"
+            onClick={() => setDateOpen((v) => !v)}
+          >
+            <Clock size={15} />
+          </button>
+          <button
+            className={"icon-btn" + (tunneled ? " on" : "")}
+            title={tunneled ? "Remove from your dashboard" : "Tunnel to your dashboard"}
+            onClick={toggleTunnel}
+          >
+            <Bookmark size={15} />
+          </button>
+        </div>
+        {note.items.length > 0 && <span className="note-progress">{doneCount}/{note.items.length} done</span>}
+      </div>
+
+      {dateOpen && (
+        <div className="note-deadline-edit">
+          <input
+            type="date"
+            value={note.deadlineAt ? note.deadlineAt.slice(0, 10) : ""}
+            onChange={(e) => setDeadline(e.target.value)}
+          />
+          {note.deadlineAt && (
+            <button className="icon-btn" title="Clear deadline" onClick={() => setDeadline("")}>
+              <X size={14} />
+            </button>
+          )}
+        </div>
       )}
     </div>
   );

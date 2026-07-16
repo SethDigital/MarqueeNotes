@@ -321,19 +321,15 @@ body {
   color: var(--board-empty);
 }
 
-/* Uniform note layout: every note is the same width and stretches to the
-   height of its grid row, so the board reads as tidy columns. */
-.notes-grid {
+/* The canvas is the positioned surface notes and decorations float on. It's
+   larger than the viewport so notes can be dragged out and scrolled to. */
+.canvas {
   position: relative;
-  z-index: 1;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 20px;
-  padding: 26px;
-  /* Let clicks in the gaps fall through to decorations behind the grid. */
-  pointer-events: none;
+  min-width: 100%;
+  min-height: 100%;
+  width: 1600px;
+  height: 1100px;
 }
-.notes-grid > .note { pointer-events: auto; }
 
 /* ----------------------------- decorations ------------------------------ */
 .decoration {
@@ -371,17 +367,22 @@ body {
 
 /* ------------------------------ sticky note ---------------------------- */
 .note {
-  position: relative;
+  position: absolute;
+  z-index: 1;
+  width: 240px;
   display: flex;
   flex-direction: column;
-  min-height: 220px;
   padding: 10px 12px 8px;
   border-radius: 3px;
   background: var(--note-color);
   border: 1px solid transparent;
   box-shadow: var(--note-shadow);
   color: var(--note-text);
+  touch-action: none;
 }
+.note.dragging { z-index: 30; box-shadow: 0 12px 26px rgba(0, 0, 0, 0.45); }
+.note-grip { cursor: grab; color: var(--note-dim); display: inline-flex; padding: 2px; }
+.note.dragging .note-grip { cursor: grabbing; }
 
 /* Neon notes: dark body, the note's color becomes its glow. These rules live
    at element scope because --note-color is set per-note (inline style). */
@@ -532,7 +533,84 @@ body {
 }
 .note-add input::placeholder { color: var(--note-faint); }
 
-.note-progress { font-size: 0.7rem; color: var(--note-dim); text-align: right; margin-top: 4px; }
+/* Footer: deadline + tunnel actions on the left, progress on the right. */
+.note-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; }
+.note-actions { display: flex; gap: 2px; }
+.note-actions .icon-btn.on { color: var(--accent); opacity: 1; }
+.note-progress { font-size: 0.7rem; color: var(--note-dim); }
+
+.note-deadline-edit { display: flex; align-items: center; gap: 4px; margin-top: 6px; }
+.note-deadline-edit input {
+  flex: 1;
+  border: 1px solid var(--note-line);
+  background: transparent;
+  color: inherit;
+  border-radius: 6px;
+  padding: 3px 6px;
+  font-size: 0.78rem;
+  color-scheme: dark light;
+}
+
+/* Live deadline countdown badge. */
+.deadline {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  margin: 4px 0 2px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--chip-bg);
+  color: var(--chip-text);
+}
+.deadline.soon { background: rgba(234, 179, 8, 0.18); color: #a16207; }
+.deadline.overdue { background: rgba(217, 83, 79, 0.16); color: #b3261e; }
+:root[data-theme="neon"] .deadline.soon { color: #fde047; }
+:root[data-theme="neon"] .deadline.overdue { color: #ff8fa0; }
+
+/* ---------------------------- personal dashboard ------------------------ */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+.dash-col {
+  background: var(--control);
+  border: 1px solid var(--control-border);
+  border-radius: 10px;
+  padding: 12px;
+}
+.dash-col-head { display: flex; align-items: center; gap: 6px; }
+.dash-col-head h3 { margin: 0; font-size: 0.92rem; flex: 1; }
+.dash-col-head .count {
+  font-size: 0.72rem;
+  font-weight: 700;
+  background: var(--chip-bg);
+  color: var(--chip-text);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+.dash-col-blurb { margin: 4px 0 10px; font-size: 0.72rem; color: var(--muted); }
+.dash-card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  border: none;
+  border-left: 3px solid var(--note-color);
+  background: var(--input-bg);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+}
+.dash-card:hover { background: var(--hover); }
+.dash-card-title { font-weight: 600; font-size: 0.85rem; margin-bottom: 3px; }
+.dash-card-meta { display: flex; gap: 8px; flex-wrap: wrap; font-size: 0.72rem; color: var(--muted); }
+.dash-empty { font-size: 0.75rem; color: var(--muted); font-style: italic; margin: 4px 0 0; }
 
 /* Small screens: keep the top bar usable. */
 @media (max-width: 560px) {
