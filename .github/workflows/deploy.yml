@@ -24,6 +24,13 @@ jobs:
           node-version: 20
       - run: npm install
       - run: npm run build
+        # The publishable (anon) key is safe to expose — it ships in the browser
+        # bundle and RLS is what protects the data. To rotate it or avoid keeping
+        # it in the workflow, move these to repo Actions "Variables" and reference
+        # them as ${{ vars.NAME }}.
+        env:
+          VITE_SUPABASE_URL: https://doqokatwfbetiasadnfb.supabase.co
+          VITE_SUPABASE_ANON_KEY: sb_publishable_C1QhXW-JnN33uOrvxMBpiQ_vB9RyRFZ
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
