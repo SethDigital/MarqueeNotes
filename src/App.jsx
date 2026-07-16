@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
   Plus, Users, ArrowLeft, Pin, Trash2, X, FolderOpen, Sparkles, LayoutDashboard,
 } from "lucide-react";
@@ -21,6 +21,8 @@ function Workspace({ user }) {
   // Under a real backend identity is fixed to the signed-in user; in the demo
   // it stays the per-team "working as" name.
   const fixedMe = user?.name || null;
+  const lastEditRef = useRef(0);   // when the user last changed something locally
+  const reloadTimer = useRef(null);
 
   const reload = useCallback(() => {
     db.loadWorkspace()
@@ -30,10 +32,23 @@ function Workspace({ user }) {
 
   useEffect(() => { reload(); }, [reload]);
 
-  // Realtime: when the backend reports a change, pull a fresh workspace.
+  // Realtime: coalesce bursts of remote changes, and never reload while the
+  // user is mid-edit — pulling server state that's momentarily behind their
+  // keystrokes is what made fast typing "rubberband".
   useEffect(() => {
     if (!usingBackend) return;
-    return db.subscribe(() => reload());
+    const attempt = () => {
+      if (Date.now() - lastEditRef.current < 1200) {
+        reloadTimer.current = setTimeout(attempt, 1200); // still typing; wait
+      } else {
+        reload();
+      }
+    };
+    const unsub = db.subscribe(() => {
+      clearTimeout(reloadTimer.current);
+      reloadTimer.current = setTimeout(attempt, 600);
+    });
+    return () => { clearTimeout(reloadTimer.current); unsub(); };
   }, [reload]);
 
   if (!data) return <div className="screen"><p className="page hint">Loading…</p></div>;
@@ -41,8 +56,10 @@ function Workspace({ user }) {
   const team = data.teams.find((t) => t.id === view.teamId);
   const project = team?.projects.find((p) => p.id === view.projectId);
 
-  // Optimistic tree updates keep the UI snappy; the db call persists.
-  const patchProject = (teamId, projectId, fn) =>
+  // Optimistic tree updates keep the UI snappy; the db call persists. Marking
+  // the edit time here keeps a realtime echo from stomping in-flight typing.
+  const patchProject = (teamId, projectId, fn) => {
+    lastEditRef.current = Date.now();
     setData((d) => ({
       ...d,
       teams: d.teams.map((t) =>
@@ -51,6 +68,7 @@ function Workspace({ user }) {
           : t
       ),
     }));
+  };
 
   const addTeam = (t) => { setData((d) => ({ ...d, teams: [...d.teams, t] })); db.createTeam(t); };
   const deleteTeam = (teamId) => {

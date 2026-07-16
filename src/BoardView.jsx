@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import {
   Plus, ArrowLeft, Pin, PinOff, Trash2, Check, ImagePlus, X,
   GripVertical, Clock, Bookmark, LayoutGrid,
@@ -7,7 +7,7 @@ import {
   uid, newNote, NOTE_COLORS, getMe, setMe, tidyPositions,
   fileToDataURL, newDecoration, MAX_DECORATION_BYTES, DECORATION_TYPES,
 } from "./store.js";
-import { db } from "./db/index.js";
+import { db, usingBackend } from "./db/index.js";
 import WorkingAs from "./WorkingAs.jsx";
 import ThemeSwitcher from "./ThemeSwitcher.jsx";
 import Deadline from "./Deadline.jsx";
@@ -20,6 +20,30 @@ export default function BoardView({ team, project, fixedMe, onBack, onPatchProje
 
   const changeMe = (name) => { setMe(team.id, name); setLocalMe(name); };
 
+  // Coalesce rapid note edits into one write per note. On localStorage the
+  // write is a cheap synchronous save, so persist immediately; on the backend,
+  // debounce so typing doesn't fire a query (and a realtime echo) per keystroke.
+  const pending = useRef(new Map()); // noteId -> { note, timer }
+  const persistNote = (note) => {
+    if (!usingBackend) { db.updateNote(team.id, project.id, note); return; }
+    const existing = pending.current.get(note.id);
+    if (existing) clearTimeout(existing.timer);
+    const timer = setTimeout(() => {
+      pending.current.delete(note.id);
+      db.updateNote(team.id, project.id, note);
+    }, 450);
+    pending.current.set(note.id, { note, timer });
+  };
+  const cancelPending = (noteId) => {
+    const existing = pending.current.get(noteId);
+    if (existing) { clearTimeout(existing.timer); pending.current.delete(noteId); }
+  };
+  // Leaving the board? Flush any edit still waiting so it isn't lost.
+  useEffect(() => () => {
+    for (const { note } of pending.current.values()) db.updateNote(team.id, project.id, note);
+    pending.current.clear();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Every mutation updates the on-screen tree optimistically, then persists the
   // concrete object through the repository (localStorage or Supabase).
   const updateNote = (noteId, fn) => {
@@ -27,7 +51,7 @@ export default function BoardView({ team, project, fixedMe, onBack, onPatchProje
     if (!current) return;
     const next = fn(current);
     onPatchProject((p) => ({ ...p, notes: p.notes.map((n) => (n.id === noteId ? next : n)) }));
-    db.updateNote(team.id, project.id, next);
+    persistNote(next);
   };
 
   const addNote = () => {
@@ -37,6 +61,7 @@ export default function BoardView({ team, project, fixedMe, onBack, onPatchProje
   };
 
   const deleteNote = (noteId) => {
+    cancelPending(noteId); // drop any queued write for a note we're removing
     onPatchProject((p) => ({ ...p, notes: p.notes.filter((n) => n.id !== noteId) }));
     db.deleteNote(team.id, project.id, noteId);
   };
@@ -47,6 +72,9 @@ export default function BoardView({ team, project, fixedMe, onBack, onPatchProje
     const slots = tidyPositions(project.notes.length, width);
     const positions = project.notes.map((n, i) => ({ id: n.id, x: slots[i].x, y: slots[i].y }));
     const by = new Map(positions.map((x) => [x.id, x]));
+    // Stale queued writes hold pre-tidy coordinates; drop them so they can't
+    // undo the new layout.
+    for (const id of [...pending.current.keys()]) cancelPending(id);
     onPatchProject((p) => ({ ...p, notes: p.notes.map((n) => ({ ...n, ...by.get(n.id) })) }));
     db.updateNotePositions(team.id, project.id, positions);
   };
