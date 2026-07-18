@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
-  Plus, Users, ArrowLeft, Pin, Trash2, X, FolderOpen, Sparkles, LayoutDashboard,
+  Plus, Users, ArrowLeft, Pin, Trash2, X, FolderOpen, Sparkles, LayoutDashboard, Ticket, Bookmark,
 } from "lucide-react";
 import { uid, getMe, setMe } from "./store.js";
 import { db, usingBackend } from "./db/index.js";
@@ -9,6 +9,9 @@ import BoardView from "./BoardView.jsx";
 import WorkingAs from "./WorkingAs.jsx";
 import ThemeSwitcher from "./ThemeSwitcher.jsx";
 import PersonalDashboard from "./PersonalDashboard.jsx";
+import PersonalBoard from "./PersonalBoard.jsx";
+import InvitePanel from "./InvitePanel.jsx";
+import Modal from "./Modal.jsx";
 
 export default function App() {
   // AuthGate supplies the signed-in user (Supabase) or null (localStorage demo).
@@ -23,6 +26,7 @@ function Workspace({ user }) {
   const fixedMe = user?.name || null;
   const lastEditRef = useRef(0);   // when the user last changed something locally
   const reloadTimer = useRef(null);
+  const patchPending = useRef(new Map()); // noteId -> debounced persist (My Board edits)
 
   const reload = useCallback(() => {
     db.loadWorkspace()
@@ -83,6 +87,55 @@ function Workspace({ user }) {
     setData((d) => ({ ...d, teams: d.teams.map((t) => (t.id === teamId ? { ...t, members } : t)) }));
     db.setMembers(teamId, members);
   };
+  // Redeem an invite code, then pull the fresh workspace (now including the team
+  // just joined) and drop the user straight onto it. Errors bubble to the modal.
+  const joinTeam = async (code) => {
+    const { teamId } = await db.redeemInvite(code);
+    setData(await db.loadWorkspace());
+    setView({ screen: "team", teamId });
+  };
+
+  // Edit any note by its (team, project) coordinates and persist it. This is how
+  // My Board writes a yoinked note's changes back to the original team-board
+  // note. Mirrors BoardView's optimistic-then-persist flow, with the backend
+  // write debounced per note so typing doesn't fire a query per keystroke.
+  const patchNote = (teamId, projectId, noteId, fn) => {
+    const t = data.teams.find((x) => x.id === teamId);
+    const p = t?.projects.find((x) => x.id === projectId);
+    const current = p?.notes.find((n) => n.id === noteId);
+    if (!current) return;
+    const next = fn(current);
+    lastEditRef.current = Date.now();
+    setData((d) => ({
+      ...d,
+      teams: d.teams.map((tm) =>
+        tm.id !== teamId ? tm : {
+          ...tm,
+          projects: tm.projects.map((pr) =>
+            pr.id !== projectId ? pr : { ...pr, notes: pr.notes.map((n) => (n.id === noteId ? next : n)) }
+          ),
+        }
+      ),
+    }));
+    if (!usingBackend) { db.updateNote(teamId, projectId, next); return; }
+    const existing = patchPending.current.get(noteId);
+    if (existing) clearTimeout(existing);
+    patchPending.current.set(
+      noteId,
+      setTimeout(() => { patchPending.current.delete(noteId); db.updateNote(teamId, projectId, next); }, 450)
+    );
+  };
+
+  if (view.screen === "myboard") {
+    return (
+      <PersonalBoard
+        data={data}
+        fixedMe={fixedMe}
+        patchNote={patchNote}
+        onBack={() => setView({ screen: "home" })}
+      />
+    );
+  }
 
   if (view.screen === "board" && team && project) {
     return (
@@ -115,6 +168,8 @@ function Workspace({ user }) {
       teams={data.teams}
       onAddTeam={addTeam}
       onOpenTeam={(teamId) => setView({ screen: "team", teamId })}
+      onJoinTeam={joinTeam}
+      onOpenMyBoard={() => setView({ screen: "myboard" })}
       onSeedDemo={async () => setData(await db.seedDemo())}
     />
   );
@@ -122,8 +177,9 @@ function Workspace({ user }) {
 
 /* ------------------------------- home ---------------------------------- */
 
-function HomeScreen({ teams, onAddTeam, onOpenTeam, onSeedDemo }) {
+function HomeScreen({ teams, onAddTeam, onOpenTeam, onJoinTeam, onOpenMyBoard, onSeedDemo }) {
   const [creating, setCreating] = useState(false);
+  const [joining, setJoining] = useState(false);
 
   return (
     <div className="screen">
@@ -135,9 +191,17 @@ function HomeScreen({ teams, onAddTeam, onOpenTeam, onSeedDemo }) {
       <main className="page">
         <div className="page-head">
           <h2>Teams</h2>
-          <button className="btn primary" onClick={() => setCreating(true)}>
-            <Plus size={16} /> New team
-          </button>
+          <div className="head-actions">
+            <button className="btn" onClick={onOpenMyBoard} title="Everything you've yoinked, across teams">
+              <Bookmark size={16} /> My Board
+            </button>
+            <button className="btn" onClick={() => setJoining(true)}>
+              <Ticket size={16} /> Join with a code
+            </button>
+            <button className="btn primary" onClick={() => setCreating(true)}>
+              <Plus size={16} /> New team
+            </button>
+          </div>
         </div>
 
         {teams.length === 0 && (
@@ -165,7 +229,54 @@ function HomeScreen({ teams, onAddTeam, onOpenTeam, onSeedDemo }) {
       </main>
 
       {creating && <NewTeamModal onClose={() => setCreating(false)} onCreate={onAddTeam} />}
+      {joining && <JoinTeamModal onClose={() => setJoining(false)} onJoin={onJoinTeam} />}
     </div>
+  );
+}
+
+function JoinTeamModal({ onClose, onJoin }) {
+  const [code, setCode] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!code.trim()) return setError("Paste the invite code you were given.");
+    setBusy(true);
+    setError("");
+    try {
+      await onJoin(code);
+      onClose(); // success navigates to the team; unmounts this modal
+    } catch (err) {
+      setError(err.message || "That invite code didn't work.");
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal title="Join a team" onClose={onClose}>
+      <form onSubmit={submit} className="form">
+        <label>Invite code
+          <input
+            autoFocus
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            placeholder="ABCD-EFGH"
+            autoCapitalize="characters"
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </label>
+        <p className="hint">Ask a teammate for the code they shared — it works until it expires.</p>
+        {error && <p className="error">{error}</p>}
+        <div className="form-actions">
+          <button type="button" className="btn" onClick={onClose}>Cancel</button>
+          <button type="submit" className="btn primary" disabled={busy}>
+            {busy ? "Joining…" : "Join team"}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -217,6 +328,9 @@ function TeamScreen({ team, fixedMe, onBack, onOpenProject, onAddProject, onSetM
   const [localMe, setLocalMe] = useState(() => getMe(team.id));
   const me = fixedMe || localMe;
   const canEditMembers = !usingBackend; // real members come from invites
+  // Who may mint invite codes: any team admin on the backend; everyone in the
+  // single-user demo (where there's no role model).
+  const canInvite = !usingBackend || team.myRole === "admin";
 
   const changeMe = (name) => { setMe(team.id, name); setLocalMe(name); };
 
@@ -336,10 +450,11 @@ function TeamScreen({ team, fixedMe, onBack, onOpenProject, onAddProject, onSetM
 
         {tab === "members" && (
           <>
+            {canInvite && <InvitePanel teamId={team.id} />}
             <p className="hint">
               {canEditMembers
                 ? "Steps and notes can carry these names, so it’s always clear who’s on what — and what’s already handled."
-                : "Members come from your team’s real accounts. Invite teammates by email (invite flow coming with the connected build)."}
+                : "Members come from your team’s real accounts. Share an invite code above to add a teammate."}
             </p>
             {canEditMembers && (
               <form onSubmit={addMember} className="inline-form">
@@ -370,18 +485,3 @@ function TeamScreen({ team, fixedMe, onBack, onOpenProject, onAddProject, onSetM
   );
 }
 
-/* ------------------------------- shared -------------------------------- */
-
-export function Modal({ title, onClose, children }) {
-  return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-head">
-          <h3>{title}</h3>
-          <button className="icon-btn" onClick={onClose}><X size={16} /></button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
-}

@@ -38,6 +38,7 @@ function rowToNote(row, idToName) {
     y: row.y,
     createdAt: row.created_at,
     deadlineAt: row.deadline_at,
+    completedAt: row.completed_at,
     pin:
       row.pin === "team"
         ? { to: "team" }
@@ -51,6 +52,7 @@ function rowToNote(row, idToName) {
         id: i.id,
         text: i.text,
         done: i.done,
+        doneAt: i.done_at,
         assignee: idToName.get(i.assignee_id) || null,
         assignedBy: idToName.get(i.assigned_by_id) || null,
         doneBy: idToName.get(i.done_by_id) || null,
@@ -66,8 +68,8 @@ const WORKSPACE_SELECT = `
   boards (
     id, name,
     notes (
-      id, title, color, rot, x, y, created_at, deadline_at, pin, pinned_member,
-      checklist_items ( id, text, done, position, assignee_id, assigned_by_id, done_by_id ),
+      id, title, color, rot, x, y, created_at, deadline_at, completed_at, pin, pinned_member,
+      checklist_items ( id, text, done, done_at, position, assignee_id, assigned_by_id, done_by_id ),
       tunnels ( user_id )
     ),
     decorations ( id, src, x, y, w )
@@ -75,6 +77,8 @@ const WORKSPACE_SELECT = `
 `;
 
 async function loadWorkspace() {
+  const { data: auth } = await supabase.auth.getUser();
+  const myId = auth?.user?.id;
   const { data, error } = await supabase.from("teams").select(WORKSPACE_SELECT);
   if (error) throw error;
   const teams = (data || []).map((team) => {
@@ -82,6 +86,8 @@ async function loadWorkspace() {
     return {
       id: team.id,
       name: team.name,
+      // The caller's own role on this team — drives who may mint invites.
+      myRole: (team.memberships || []).find((m) => m.profiles?.id === myId)?.role || null,
       members: (team.memberships || []).map((m) => m.profiles?.display_name).filter(Boolean),
       projects: (team.boards || []).map((b) => ({
         id: b.id,
@@ -119,6 +125,7 @@ async function writeNote(teamId, projectId, note) {
     x: note.x,
     y: note.y,
     deadline_at: note.deadlineAt,
+    completed_at: note.completedAt || null,
     pin: note.pin ? note.pin.to : "none",
     pinned_member: note.pin?.to === "member" ? nameToId.get(note.pin.member) || null : null,
   });
@@ -132,6 +139,7 @@ async function writeNote(teamId, projectId, note) {
     text: it.text,
     position: i,
     done: it.done,
+    done_at: it.doneAt || null,
     assignee_id: nameToId.get(it.assignee) || null,
     assigned_by_id: nameToId.get(it.assignedBy) || null,
     done_by_id: nameToId.get(it.doneBy) || null,
@@ -178,9 +186,51 @@ export const supabaseBackend = {
     if (error) throw error;
   },
   async setMembers() {
-    // Members are real profiles here; adding one is an email invite flow, not a
-    // name string. Wire that up as a dedicated invite feature.
+    // Members are real profiles here; you don't add them by name. Joining a team
+    // happens through the invite-code flow below (createInvite / redeemInvite).
     console.warn("setMembers is a no-op on the Supabase backend — use invites.");
+  },
+
+  /* ------------------------------ invites ------------------------------ */
+  // Admin mints a single-use code; server enforces the admin check and returns
+  // the new row (incl. its `code`).
+  async createInvite(teamId, role = "member") {
+    const { data, error } = await supabase.rpc("create_invite", {
+      _team_id: teamId,
+      _role: role,
+    });
+    if (error) throw error;
+    // A single-composite return comes back as an object; be defensive anyway.
+    return Array.isArray(data) ? data[0] : data;
+  },
+
+  // The team's still-live codes (not yet expired), for an admin to share or
+  // revoke. RLS hides these from non-admins.
+  async listInvites(teamId) {
+    const { data, error } = await supabase
+      .from("invite_codes")
+      .select("id, code, role, created_at, expires_at, uses")
+      .eq("team_id", teamId)
+      .gt("expires_at", new Date().toISOString())
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    return data || [];
+  },
+
+  async revokeInvite(inviteId) {
+    const { error } = await supabase.from("invite_codes").delete().eq("id", inviteId);
+    if (error) throw error;
+  },
+
+  // Redeem a code to join its team. Returns { teamId, teamName } on success and
+  // throws with a human-readable message otherwise (invalid / expired / already
+  // a member). Expiry is enforced in redeem_invite() on the server.
+  async redeemInvite(code) {
+    const { data, error } = await supabase.rpc("redeem_invite", { _code: code });
+    if (error) throw error;
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row) throw new Error("That invite code is not valid");
+    return { teamId: row.team_id, teamName: row.team_name };
   },
 
   /* ------------------------------ projects ----------------------------- */
@@ -238,6 +288,7 @@ export const supabaseBackend = {
       .on("postgres_changes", { event: "*", schema: "public", table: "checklist_items" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "decorations" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "tunnels" }, onChange)
+      .on("postgres_changes", { event: "*", schema: "public", table: "memberships" }, onChange)
       .subscribe();
     return () => supabase.removeChannel(channel);
   },

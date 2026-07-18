@@ -15,7 +15,7 @@ export function useCountdown(deadlineIso) {
   return { overdue: ms < 0, soon: ms >= 0 && ms < 86_400_000, label: formatDelta(Math.abs(ms)) };
 }
 
-function formatDelta(ms) {
+export function formatDelta(ms) {
   const mins = Math.round(ms / 60_000);
   const hrs = Math.floor(mins / 60);
   const days = Math.floor(hrs / 24);

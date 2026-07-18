@@ -1,22 +1,22 @@
 import React, { useRef, useState, useEffect } from "react";
+import { Plus, ArrowLeft, ImagePlus, X, LayoutGrid, Layers } from "lucide-react";
 import {
-  Plus, ArrowLeft, Pin, PinOff, Trash2, Check, ImagePlus, X,
-  GripVertical, Clock, Bookmark, LayoutGrid,
-} from "lucide-react";
-import {
-  uid, newNote, NOTE_COLORS, getMe, setMe, tidyPositions,
+  newNote, getMe, setMe, tidyPositions, isNoteComplete,
   fileToDataURL, newDecoration, MAX_DECORATION_BYTES, DECORATION_TYPES,
 } from "./store.js";
 import { db, usingBackend } from "./db/index.js";
 import WorkingAs from "./WorkingAs.jsx";
 import ThemeSwitcher from "./ThemeSwitcher.jsx";
-import Deadline from "./Deadline.jsx";
+import StickyNote from "./StickyNote.jsx";
+import CompletedNotesModal from "./CompletedNotesModal.jsx";
 
 export default function BoardView({ team, project, fixedMe, onBack, onPatchProject }) {
   const canvasRef = useRef(null);
   const fileRef = useRef(null);
   const [localMe, setLocalMe] = useState(() => getMe(team.id));
   const me = fixedMe || localMe;
+  const [completedOpen, setCompletedOpen] = useState(false);
+  const completedNotes = project.notes.filter(isNoteComplete);
 
   const changeMe = (name) => { setMe(team.id, name); setLocalMe(name); };
 
@@ -119,6 +119,14 @@ export default function BoardView({ team, project, fixedMe, onBack, onPatchProje
         <h1>{project.name}</h1>
         {!fixedMe && <WorkingAs team={team} me={me} onChange={changeMe} />}
         <ThemeSwitcher />
+        <button
+          className="btn"
+          title="See everything finished on this board"
+          onClick={() => setCompletedOpen(true)}
+        >
+          <Layers size={16} /> Completed
+          {completedNotes.length > 0 && <span className="stack-count">{completedNotes.length}</span>}
+        </button>
         <button className="btn" title="Line the notes up in neat columns" onClick={tidyUp}>
           <LayoutGrid size={16} /> Tidy up
         </button>
@@ -163,6 +171,14 @@ export default function BoardView({ team, project, fixedMe, onBack, onPatchProje
           ))}
         </div>
       </div>
+
+      {completedOpen && (
+        <CompletedNotesModal
+          boardName={project.name}
+          notes={completedNotes}
+          onClose={() => setCompletedOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -212,236 +228,6 @@ function Decoration({ decor, onChange, onDelete }) {
         <X size={13} />
       </button>
       <div className="decor-resize" title="Drag to resize" onPointerDown={startResize} />
-    </div>
-  );
-}
-
-/* ---------------------------- sticky note ------------------------------- */
-
-function StickyNote({ note, members, me, onChange, onDelete }) {
-  const rootRef = useRef(null);
-  const [live, setLive] = useState(null);      // transient position while dragging
-  const [pinMenu, setPinMenu] = useState(false);
-  const [dateOpen, setDateOpen] = useState(false);
-  const [newItem, setNewItem] = useState("");
-
-  const doneCount = note.items.filter((i) => i.done).length;
-  const tunneled = me && note.tunnels.includes(me);
-
-  /* --- free drag: reposition the note anywhere on the canvas --- */
-  const startDrag = (e) => {
-    // Don't start a drag when grabbing a control — only the note body/handle.
-    if (e.target.closest("input,button,select,textarea,a,.swatch")) return;
-    e.preventDefault();
-    const canvas = rootRef.current.parentElement.getBoundingClientRect();
-    const grabX = e.clientX - canvas.left - note.x;
-    const grabY = e.clientY - canvas.top - note.y;
-    let latest = { x: note.x, y: note.y };
-    const move = (ev) => {
-      const c = rootRef.current.parentElement.getBoundingClientRect();
-      latest = {
-        x: Math.max(0, ev.clientX - c.left - grabX),
-        y: Math.max(0, ev.clientY - c.top - grabY),
-      };
-      setLive({ ...latest });
-    };
-    const up = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      setLive(null);
-      onChange((n) => ({ ...n, x: latest.x, y: latest.y })); // persist final spot
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-  };
-
-  const addItem = () => {
-    const text = newItem.trim();
-    if (!text) return;
-    onChange((n) => ({
-      ...n,
-      items: [...n.items, { id: uid(), text, done: false, assignee: null, assignedBy: null, doneBy: null }],
-    }));
-    setNewItem("");
-  };
-
-  const updateItem = (itemId, fn) =>
-    onChange((n) => ({ ...n, items: n.items.map((i) => (i.id === itemId ? fn(i) : i)) }));
-
-  // Tunnel this note onto my personal dashboard (a link, not a copy).
-  const toggleTunnel = () => {
-    if (!me) return window.alert("Pick who you are with the “You’re” menu up top, then you can tunnel notes to your dashboard.");
-    onChange((n) => ({
-      ...n,
-      tunnels: n.tunnels.includes(me) ? n.tunnels.filter((x) => x !== me) : [...n.tunnels, me],
-    }));
-  };
-
-  const setDeadline = (value) =>
-    onChange((n) => ({ ...n, deadlineAt: value ? new Date(value + "T23:59:59").toISOString() : null }));
-
-  const pos = live || note;
-  return (
-    <div
-      ref={rootRef}
-      className={"note" + (live ? " dragging" : "")}
-      style={{ left: pos.x, top: pos.y, "--note-color": note.color, transform: `rotate(${note.rot}deg)` }}
-      onPointerDown={startDrag}
-    >
-      {note.pin && (
-        <div className="note-pin-flag">
-          <Pin size={12} /> {note.pin.to === "team" ? "Team" : note.pin.member}
-        </div>
-      )}
-
-      <div className="note-toolbar">
-        <span className="note-grip" title="Drag to move"><GripVertical size={15} /></span>
-        <div className="pin-wrap">
-          <button
-            className={"icon-btn" + (note.pin ? " pinned" : "")}
-            title={note.pin ? "Change or remove pin" : "Pin this note"}
-            onClick={() => setPinMenu((v) => !v)}
-          >
-            <Pin size={15} />
-          </button>
-          {pinMenu && (
-            <div className="pin-menu">
-              <button onClick={() => { onChange((n) => ({ ...n, pin: { to: "team" } })); setPinMenu(false); }}>
-                <Pin size={13} /> Whole team
-              </button>
-              {members.map((m) => (
-                <button key={m} onClick={() => { onChange((n) => ({ ...n, pin: { to: "member", member: m } })); setPinMenu(false); }}>
-                  {m}
-                </button>
-              ))}
-              {members.length === 0 && <div className="pin-menu-hint">Add members on the team screen to pin to a person.</div>}
-              {note.pin && (
-                <button className="danger" onClick={() => { onChange((n) => ({ ...n, pin: null })); setPinMenu(false); }}>
-                  <PinOff size={13} /> Unpin
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-        <div className="swatches">
-          {NOTE_COLORS.map((c) => (
-            <button
-              key={c}
-              className={"swatch" + (c === note.color ? " current" : "")}
-              style={{ background: c }}
-              title="Note color"
-              onClick={() => onChange((n) => ({ ...n, color: c }))}
-            />
-          ))}
-        </div>
-        <button className="icon-btn" title="Take down this note" onClick={onDelete}>
-          <Trash2 size={15} />
-        </button>
-      </div>
-
-      <input
-        className="note-title"
-        value={note.title}
-        placeholder="Note title…"
-        onChange={(e) => onChange((n) => ({ ...n, title: e.target.value }))}
-      />
-
-      {note.deadlineAt && <Deadline deadlineIso={note.deadlineAt} />}
-
-      <ul className="note-items">
-        {note.items.map((item) => (
-          <li key={item.id} className={item.done ? "done" : ""}>
-            <button
-              className={"check" + (item.done ? " checked" : "")}
-              title={item.done ? "Mark as not done" : me ? `Check off as ${me}` : "Check off"}
-              onClick={() =>
-                updateItem(item.id, (i) => ({ ...i, done: !i.done, doneBy: !i.done ? me || null : null }))
-              }
-            >
-              {item.done && <Check size={11} />}
-            </button>
-            <span className="item-text">{item.text}</span>
-            {item.done ? (
-              item.doneBy && <span className="done-by" title={`Handled by ${item.doneBy}`}>{item.doneBy} ✓</span>
-            ) : (
-              <select
-                className="assignee"
-                title="Who's on this step?"
-                value={item.assignee || ""}
-                onChange={(e) =>
-                  updateItem(item.id, (i) => ({
-                    ...i,
-                    assignee: e.target.value || null,
-                    // Record who handed it out, so it shows under their "Distributed".
-                    assignedBy: e.target.value ? me || null : null,
-                  }))
-                }
-              >
-                <option value="">–</option>
-                {members.map((m) => (
-                  <option key={m} value={m}>{m}</option>
-                ))}
-              </select>
-            )}
-            <button
-              className="icon-btn item-delete"
-              title="Remove step"
-              onClick={() => onChange((n) => ({ ...n, items: n.items.filter((i) => i.id !== item.id) }))}
-            >
-              ×
-            </button>
-          </li>
-        ))}
-      </ul>
-
-      <div className="note-add">
-        <input
-          value={newItem}
-          placeholder="Add a step…"
-          onChange={(e) => setNewItem(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.keyCode === 13) {
-              e.preventDefault();
-              addItem();
-            }
-          }}
-        />
-      </div>
-
-      <div className="note-footer">
-        <div className="note-actions">
-          <button
-            className={"icon-btn" + (note.deadlineAt ? " on" : "")}
-            title="Set a deadline"
-            onClick={() => setDateOpen((v) => !v)}
-          >
-            <Clock size={15} />
-          </button>
-          <button
-            className={"icon-btn" + (tunneled ? " on" : "")}
-            title={tunneled ? "Remove from your dashboard" : "Tunnel to your dashboard"}
-            onClick={toggleTunnel}
-          >
-            <Bookmark size={15} />
-          </button>
-        </div>
-        {note.items.length > 0 && <span className="note-progress">{doneCount}/{note.items.length} done</span>}
-      </div>
-
-      {dateOpen && (
-        <div className="note-deadline-edit">
-          <input
-            type="date"
-            value={note.deadlineAt ? note.deadlineAt.slice(0, 10) : ""}
-            onChange={(e) => setDeadline(e.target.value)}
-          />
-          {note.deadlineAt && (
-            <button className="icon-btn" title="Clear deadline" onClick={() => setDeadline("")}>
-              <X size={14} />
-            </button>
-          )}
-        </div>
-      )}
     </div>
   );
 }

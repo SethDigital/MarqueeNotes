@@ -7,7 +7,7 @@
 // backend write to normalized tables without one client clobbering another's
 // rows — see ./supabase.js.
 
-import { load, save, demoData } from "../store.js";
+import { load, save, demoData, uid, genInviteCode, normalizeInviteCode, INVITE_TTL_MS } from "../store.js";
 
 const findTeam = (d, teamId) => d.teams.find((t) => t.id === teamId);
 const findProject = (d, teamId, projectId) =>
@@ -42,6 +42,48 @@ export const localBackend = {
   },
   async setMembers(teamId, members) {
     mutate((d) => { const t = findTeam(d, teamId); if (t) t.members = members; });
+  },
+
+  /* ------------------------------ invites ------------------------------ */
+  // A working single-browser mirror of the backend flow: mint a code good for a
+  // few hours, list the live ones, revoke, and redeem. Codes are multi-use and
+  // expire — enough to exercise the whole UI without a backend.
+  async createInvite(teamId, role = "member") {
+    const now = Date.now();
+    const invite = {
+      id: uid(), code: genInviteCode(), role,
+      createdAt: new Date(now).toISOString(),
+      expiresAt: new Date(now + INVITE_TTL_MS).toISOString(),
+      uses: 0,
+    };
+    mutate((d) => { const t = findTeam(d, teamId); if (t) { t.invites = t.invites || []; t.invites.push(invite); } });
+    return invite;
+  },
+  async listInvites(teamId) {
+    const t = findTeam(load(), teamId);
+    const now = Date.now();
+    return (t?.invites || []).filter((i) => new Date(i.expiresAt).getTime() > now);
+  },
+  async revokeInvite(inviteId) {
+    mutate((d) => { for (const t of d.teams) if (t.invites) t.invites = t.invites.filter((i) => i.id !== inviteId); });
+  },
+  async redeemInvite(code) {
+    const wanted = normalizeInviteCode(code);
+    const now = Date.now();
+    let result = null, expired = false;
+    mutate((d) => {
+      for (const t of d.teams) {
+        const inv = (t.invites || []).find((i) => i.code === wanted);
+        if (!inv) continue;
+        if (new Date(inv.expiresAt).getTime() <= now) { expired = true; return; }
+        inv.uses = (inv.uses || 0) + 1;
+        result = { teamId: t.id, teamName: t.name };
+        return;
+      }
+    });
+    if (expired) throw new Error("That invite code has expired — ask for a fresh one");
+    if (!result) throw new Error("That invite code is not valid");
+    return result;
   },
 
   /* ------------------------------ projects ----------------------------- */

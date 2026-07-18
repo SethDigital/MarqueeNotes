@@ -7,7 +7,10 @@ html, body, #root { height: 100%; margin: 0; }
    whiteboard, and a neon dark mode where notes glow instead of glare.
    Every component below styles itself from these tokens. */
 
-:root, :root[data-theme="cork"] {
+/* Theme tokens match :root (global board theme) OR any [data-theme] element,
+   so a My Board section can carry its own data-theme and re-tint just its own
+   notes + surface. */
+:root, :root[data-theme="cork"], [data-theme="cork"] {
   --bg: #20312a;
   --panel: #16211c;
   --panel-border: #2e4136;
@@ -44,7 +47,7 @@ html, body, #root { height: 100%; margin: 0; }
   --check-on: #2e7d4f;
 }
 
-:root[data-theme="white"] {
+:root[data-theme="white"], [data-theme="white"] {
   --bg: #e8eae6;
   --panel: #ffffff;
   --panel-border: #d9ded8;
@@ -80,7 +83,7 @@ html, body, #root { height: 100%; margin: 0; }
   --check-on: #2e7d4f;
 }
 
-:root[data-theme="neon"] {
+:root[data-theme="neon"], [data-theme="neon"] {
   --bg: #0e1015;
   --panel: #151824;
   --panel-border: #262b3a;
@@ -276,6 +279,58 @@ body {
   border-bottom: 1px solid var(--panel-border);
 }
 
+/* ------------------------------ invites -------------------------------- */
+.head-actions { display: flex; gap: 8px; }
+
+.invite-panel {
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+.invite-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.invite-head h3 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.invite-head .hint { margin: 0; max-width: 46ch; }
+.invite-head .btn { flex: none; white-space: nowrap; }
+
+.invite-list { list-style: none; padding: 0; margin: 14px 0 0; max-width: 360px; }
+.invite-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--panel-border);
+}
+.invite-main { display: flex; align-items: center; gap: 6px; }
+.invite-meta {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.invite-meta .dot { margin: 0 6px; }
+.invite-code {
+  flex: 1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 1rem;
+  letter-spacing: 0.12em;
+  color: var(--text);
+  background: var(--control);
+  border: 1px solid var(--control-border);
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+
 /* -------------------------------- modal -------------------------------- */
 .modal-backdrop {
   position: fixed;
@@ -386,13 +441,13 @@ body {
 
 /* Neon notes: dark body, the note's color becomes its glow. These rules live
    at element scope because --note-color is set per-note (inline style). */
-:root[data-theme="neon"] .note {
+[data-theme="neon"] .note {
   background: #13161f;
   border-color: var(--note-color);
   box-shadow: 0 0 14px color-mix(in srgb, var(--note-color) 40%, transparent),
               0 4px 12px rgba(0, 0, 0, 0.5);
 }
-:root[data-theme="neon"] .note-title {
+[data-theme="neon"] .note-title {
   color: var(--note-color);
   text-shadow: 0 0 8px color-mix(in srgb, var(--note-color) 45%, transparent);
 }
@@ -638,4 +693,143 @@ body {
 @media (max-width: 560px) {
   .topbar { flex-wrap: wrap; }
   .working-as { order: 3; }
+}
+
+/* -------------------------- completion + stack ------------------------- */
+/* Count badge on the board's "Completed" button. */
+.stack-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  margin-left: 2px;
+  border-radius: 999px;
+  background: var(--check-on);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+/* A completed note wears a small "Done" flag and a quiet green edge. */
+.note.completed { border-color: color-mix(in srgb, var(--check-on) 55%, transparent); }
+.note-completed-flag {
+  position: absolute;
+  top: -10px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: var(--check-on);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+.note-actions .icon-btn.complete-on { color: var(--check-on); opacity: 1; }
+
+/* -------------------------- completed viewer --------------------------- */
+.modal.wide { width: min(620px, 94vw); }
+
+.completed-list { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; max-height: 60vh; overflow-y: auto; }
+.completed-row { border: 1px solid var(--panel-border); border-left: 4px solid var(--note-color); border-radius: 8px; overflow: hidden; }
+.completed-row-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+.completed-row-head:hover { background: var(--hover); }
+.completed-chevron { transition: transform 0.15s ease; flex: none; color: var(--muted); }
+.completed-row.open .completed-chevron { transform: rotate(90deg); }
+.completed-title { flex: 1; font-weight: 600; }
+.completed-when { color: var(--muted); font-size: 0.8rem; white-space: nowrap; }
+
+.completed-detail { padding: 4px 14px 12px 24px; }
+.completed-slack {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 8px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--doneby-text);
+  background: var(--doneby-bg);
+}
+.completed-slack.over { color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent); }
+
+.completed-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.completed-steps li { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; }
+.completed-steps li.undone { color: var(--muted); }
+.completed-check {
+  width: 15px; height: 15px; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 4px; border: 1.5px solid var(--muted); color: #fff;
+}
+.completed-check.on { background: var(--check-on); border-color: var(--check-on); }
+.completed-step-text { flex: 1; }
+.completed-steps li.undone .completed-step-text { text-decoration: line-through; text-decoration-color: var(--muted); }
+.completed-step-meta { color: var(--muted); font-size: 0.76rem; white-space: nowrap; }
+.completed-step-meta.muted { font-style: italic; }
+.completed-empty { color: var(--muted); font-size: 0.82rem; margin: 4px 0 0; }
+
+/* ------------------------------ My Board ------------------------------- */
+.myboard-section { margin-bottom: 22px; }
+.myboard-section-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.myboard-section-head h2 { margin: 0; font-size: 1.05rem; display: flex; align-items: center; gap: 6px; }
+.myboard-section-head .count {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 20px; height: 20px; padding: 0 6px;
+  border-radius: 999px; background: var(--control); border: 1px solid var(--control-border);
+  color: var(--muted); font-size: 0.75rem; font-weight: 700;
+}
+.section-theme { margin-left: auto; }
+.section-theme select {
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 0.82rem;
+}
+
+/* The section surface reuses the board tokens — which now resolve to this
+   section's own [data-theme] — so each mini-board wears its chosen look. */
+.myboard-surface {
+  border-radius: 10px;
+  border: 6px solid var(--board-frame);
+  background: var(--board-bg);
+  box-shadow: var(--board-shadow);
+  padding: 16px;
+}
+.myboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+/* Static notes sit in the grid instead of free-floating on a canvas. */
+.note.static {
+  position: relative;
+  left: auto;
+  top: auto;
+  width: auto;
+  transform: none !important;
 }
