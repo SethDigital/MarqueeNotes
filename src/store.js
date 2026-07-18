@@ -36,19 +36,24 @@ export const uid = () => {
 };
 
 // Bring any note up to the current shape. Runs on load so saves from earlier
-// versions (no x/y, no deadlines, no tunnels) keep working instead of breaking.
+// versions (no x/y, no deadlines, no yoinks/tunnels, no completion) keep working
+// instead of breaking.
 function migrateNote(n, i) {
   return {
     rot: 0,
     pin: null,
+    completedAt: null,
     ...n,
     x: typeof n.x === "number" ? n.x : 28 + (i % 4) * 260,
     y: typeof n.y === "number" ? n.y : 28 + Math.floor(i / 4) * 250,
     createdAt: n.createdAt || new Date().toISOString(),
     deadlineAt: n.deadlineAt || null,
+    completedAt: n.completedAt || null,
+    // `tunnels` is the underlying field for the Yoink feature — names who
+    // yoinked this note onto their personal board.
     tunnels: Array.isArray(n.tunnels) ? n.tunnels : [],
     items: (n.items || []).map((it) => ({
-      assignee: null, assignedBy: null, doneBy: null, ...it,
+      assignee: null, assignedBy: null, doneBy: null, doneAt: null, ...it,
     })),
   };
 }
@@ -91,6 +96,21 @@ export function setTheme(t) {
 // equivalent of initialing your work on a shared whiteboard.
 export const getMe = (teamId) => localStorage.getItem("marquee-notes-me-" + teamId) || "";
 export const setMe = (teamId, name) => localStorage.setItem("marquee-notes-me-" + teamId, name);
+
+// My Board is cross-team, so in the demo it needs one identity that isn't tied
+// to a single team's "working as" name. Under the real backend the signed-in
+// user is used instead and this is ignored.
+export const getGlobalMe = () => localStorage.getItem("marquee-notes-me-global") || "";
+export const setGlobalMe = (name) => localStorage.setItem("marquee-notes-me-global", name);
+
+// Each My Board section (one per team) can wear its own board theme, kept as a
+// per-browser preference so your personal organization doesn't touch the team's.
+export const getSectionTheme = (teamId) => {
+  const t = localStorage.getItem("marquee-myboard-theme-" + teamId);
+  return THEMES[t] ? t : "cork";
+};
+export const setSectionTheme = (teamId, t) =>
+  localStorage.setItem("marquee-myboard-theme-" + teamId, t);
 
 /* ------------------------------- invites -------------------------------- */
 // Shareable team codes: one code, many joiners, good until it expires. The real
@@ -141,11 +161,23 @@ export function newNote(index) {
     y: 28 + Math.floor(index / 4) * 250,
     createdAt: new Date().toISOString(),
     deadlineAt: null,
+    completedAt: null,
     items: [],
     pin: null,
     tunnels: [],
   };
 }
+
+// A fresh checklist step. Centralized so the note shape stays consistent
+// wherever a step is created (board, demo seed).
+export function newItem(text) {
+  return { id: uid(), text, done: false, assignee: null, assignedBy: null, doneBy: null, doneAt: null };
+}
+
+// A note counts as "completed" purely by its completedAt stamp — set either
+// automatically when the last step is checked, or explicitly via "Mark
+// complete" (which lets a note be ended early with steps still open).
+export const isNoteComplete = (note) => Boolean(note.completedAt);
 
 // Arrange notes into a tidy grid — the "Tidy up" button. Free-drag is the
 // default; this snaps everything back into columns without losing any notes.
@@ -187,14 +219,17 @@ export function newDecoration(src, index) {
 const daysFromNow = (d) => new Date(Date.now() + d * 86400000).toISOString();
 
 export function demoData() {
+  // Item tuple: [text, done, assignee?, assignedBy?, doneBy?, doneAtDays?]
   const note = (title, color, x, y, deadlineAt, items, extra = {}) => ({
     id: uid(), title, color, x, y,
     rot: Math.round((Math.random() * 3 - 1.5) * 10) / 10,
     createdAt: daysFromNow(-3),
     deadlineAt,
-    items: items.map(([text, done, assignee, assignedBy, doneBy]) => ({
+    completedAt: null,
+    items: items.map(([text, done, assignee, assignedBy, doneBy, doneAtDays]) => ({
       id: uid(), text, done,
       assignee: assignee || null, assignedBy: assignedBy || null, doneBy: doneBy || null,
+      doneAt: done ? daysFromNow(doneAtDays == null ? -1 : doneAtDays) : null,
     })),
     pin: null,
     tunnels: [],
@@ -229,6 +264,14 @@ export function demoData() {
                 ["Dark mode toggle", false],
                 ["Customer logos strip", false],
               ]),
+              // A finished note: every step done, completed a day ago, ahead of
+              // its deadline — populates the board's Completed stack and (being
+              // yoinked by Avery) shows on My Board too.
+              note("Brand guidelines", "#ddd6fe", 40, 320, daysFromNow(1), [
+                ["Logo usage rules", true, "Jordan", "Jordan", "Jordan", -2],
+                ["Color palette", true, "Avery", "Jordan", "Avery", -1],
+                ["Typography scale", true, "Sam", "Jordan", "Sam", -1],
+              ], { completedAt: daysFromNow(-1), tunnels: ["Avery"] }),
             ],
           },
           {
@@ -268,3 +311,26 @@ export function selectDashboard(team, me) {
     }
   return cols;
 }
+
+/* -------------------------- My Board derivation ------------------------- */
+// My Board gathers every note `me` has yoinked, across ALL teams, grouped into
+// one section per team (a mini-board of that team's yoinked notes). Editing a
+// note here writes back to the original team-board note — a yoink is a link,
+// never a copy. Returns [{ team, entries: [{ note, project }] }] for teams that
+// have at least one yoinked note.
+export function selectMyBoard(data, me) {
+  if (!me) return [];
+  const sections = [];
+  for (const team of data.teams || []) {
+    const entries = [];
+    for (const project of team.projects || [])
+      for (const note of project.notes || [])
+        if ((note.tunnels || []).includes(me)) entries.push({ note, project });
+    if (entries.length) sections.push({ team, entries });
+  }
+  return sections;
+}
+
+// Everyone the demo knows about, for the cross-team My Board identity picker.
+export const allMemberNames = (data) =>
+  [...new Set((data.teams || []).flatMap((t) => t.members || []))].sort();

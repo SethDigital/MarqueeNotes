@@ -137,5 +137,35 @@ end-to-end on the localStorage backend (which mirrors it in a single browser);
 the Supabase RPCs are written against the schema — give them a first live run
 before relying on them, same as the rest of `src/db/supabase.js`.
 
+## Yoink & My Board
+
+A note can be **yoinked** (the feature formerly called "tunneling") onto your
+personal **My Board** — a cross-team surface, reached from Home, that gathers
+everything you've yoinked into one themeable section per team. A yoink is a
+**link, not a copy**: editing a note on My Board writes straight back to the
+original team-board note (`src/PersonalBoard.jsx` → `patchNote` → `db.updateNote`).
+The underlying storage is unchanged — still the `tunnels` join table (`user_id`,
+`note_id`) — so no migration is needed for this; it's a UI + selector layer
+(`selectMyBoard` in `src/store.js`).
+
+## Completion & the Completed viewer
+
+Each board has a **Completed** stack listing finished notes newest-first, with
+per-step who/when and how much deadline time was left. This needs two timestamps
+([`supabase/migrations/0003_completion.sql`](../supabase/migrations/0003_completion.sql)):
+
+- `notes.completed_at` — the single source of truth for "is this note done?".
+  Set automatically when the last step is checked, or directly via **Mark
+  complete** (which can end a note early with steps still open); unchecking a
+  step reopens it.
+- `checklist_items.done_at` — when each step was checked, for the "who finished
+  what, when" detail.
+
+Apply `0003_completion.sql` after `0002_invites.sql`. Both columns are nullable,
+so existing rows read as not-completed. All of Yoink / My Board / completion is
+exercised end-to-end on the localStorage backend; the Supabase mappings in
+`src/db/supabase.js` are written against the schema — give them a first live run,
+same caveat as the rest.
+
 Say the word once you have a project and I'll help work through the first
 real connection.

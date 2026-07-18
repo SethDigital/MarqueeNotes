@@ -38,6 +38,7 @@ function rowToNote(row, idToName) {
     y: row.y,
     createdAt: row.created_at,
     deadlineAt: row.deadline_at,
+    completedAt: row.completed_at,
     pin:
       row.pin === "team"
         ? { to: "team" }
@@ -51,6 +52,7 @@ function rowToNote(row, idToName) {
         id: i.id,
         text: i.text,
         done: i.done,
+        doneAt: i.done_at,
         assignee: idToName.get(i.assignee_id) || null,
         assignedBy: idToName.get(i.assigned_by_id) || null,
         doneBy: idToName.get(i.done_by_id) || null,
@@ -66,8 +68,8 @@ const WORKSPACE_SELECT = `
   boards (
     id, name,
     notes (
-      id, title, color, rot, x, y, created_at, deadline_at, pin, pinned_member,
-      checklist_items ( id, text, done, position, assignee_id, assigned_by_id, done_by_id ),
+      id, title, color, rot, x, y, created_at, deadline_at, completed_at, pin, pinned_member,
+      checklist_items ( id, text, done, done_at, position, assignee_id, assigned_by_id, done_by_id ),
       tunnels ( user_id )
     ),
     decorations ( id, src, x, y, w )
@@ -123,6 +125,7 @@ async function writeNote(teamId, projectId, note) {
     x: note.x,
     y: note.y,
     deadline_at: note.deadlineAt,
+    completed_at: note.completedAt || null,
     pin: note.pin ? note.pin.to : "none",
     pinned_member: note.pin?.to === "member" ? nameToId.get(note.pin.member) || null : null,
   });
@@ -136,6 +139,7 @@ async function writeNote(teamId, projectId, note) {
     text: it.text,
     position: i,
     done: it.done,
+    done_at: it.doneAt || null,
     assignee_id: nameToId.get(it.assignee) || null,
     assigned_by_id: nameToId.get(it.assignedBy) || null,
     done_by_id: nameToId.get(it.doneBy) || null,

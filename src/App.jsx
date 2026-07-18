@@ -9,6 +9,7 @@ import BoardView from "./BoardView.jsx";
 import WorkingAs from "./WorkingAs.jsx";
 import ThemeSwitcher from "./ThemeSwitcher.jsx";
 import PersonalDashboard from "./PersonalDashboard.jsx";
+import PersonalBoard from "./PersonalBoard.jsx";
 import InvitePanel from "./InvitePanel.jsx";
 import Modal from "./Modal.jsx";
 
@@ -25,6 +26,7 @@ function Workspace({ user }) {
   const fixedMe = user?.name || null;
   const lastEditRef = useRef(0);   // when the user last changed something locally
   const reloadTimer = useRef(null);
+  const patchPending = useRef(new Map()); // noteId -> debounced persist (My Board edits)
 
   const reload = useCallback(() => {
     db.loadWorkspace()
@@ -93,6 +95,48 @@ function Workspace({ user }) {
     setView({ screen: "team", teamId });
   };
 
+  // Edit any note by its (team, project) coordinates and persist it. This is how
+  // My Board writes a yoinked note's changes back to the original team-board
+  // note. Mirrors BoardView's optimistic-then-persist flow, with the backend
+  // write debounced per note so typing doesn't fire a query per keystroke.
+  const patchNote = (teamId, projectId, noteId, fn) => {
+    const t = data.teams.find((x) => x.id === teamId);
+    const p = t?.projects.find((x) => x.id === projectId);
+    const current = p?.notes.find((n) => n.id === noteId);
+    if (!current) return;
+    const next = fn(current);
+    lastEditRef.current = Date.now();
+    setData((d) => ({
+      ...d,
+      teams: d.teams.map((tm) =>
+        tm.id !== teamId ? tm : {
+          ...tm,
+          projects: tm.projects.map((pr) =>
+            pr.id !== projectId ? pr : { ...pr, notes: pr.notes.map((n) => (n.id === noteId ? next : n)) }
+          ),
+        }
+      ),
+    }));
+    if (!usingBackend) { db.updateNote(teamId, projectId, next); return; }
+    const existing = patchPending.current.get(noteId);
+    if (existing) clearTimeout(existing);
+    patchPending.current.set(
+      noteId,
+      setTimeout(() => { patchPending.current.delete(noteId); db.updateNote(teamId, projectId, next); }, 450)
+    );
+  };
+
+  if (view.screen === "myboard") {
+    return (
+      <PersonalBoard
+        data={data}
+        fixedMe={fixedMe}
+        patchNote={patchNote}
+        onBack={() => setView({ screen: "home" })}
+      />
+    );
+  }
+
   if (view.screen === "board" && team && project) {
     return (
       <BoardView
@@ -125,6 +169,7 @@ function Workspace({ user }) {
       onAddTeam={addTeam}
       onOpenTeam={(teamId) => setView({ screen: "team", teamId })}
       onJoinTeam={joinTeam}
+      onOpenMyBoard={() => setView({ screen: "myboard" })}
       onSeedDemo={async () => setData(await db.seedDemo())}
     />
   );
@@ -147,6 +192,9 @@ function HomeScreen({ teams, onAddTeam, onOpenTeam, onJoinTeam, onOpenMyBoard, o
         <div className="page-head">
           <h2>Teams</h2>
           <div className="head-actions">
+            <button className="btn" onClick={onOpenMyBoard} title="Everything you've yoinked, across teams">
+              <Bookmark size={16} /> My Board
+            </button>
             <button className="btn" onClick={() => setJoining(true)}>
               <Ticket size={16} /> Join with a code
             </button>

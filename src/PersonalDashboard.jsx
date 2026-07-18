@@ -7,7 +7,7 @@ import Deadline from "./Deadline.jsx";
 // on quietly falls through the cracks. Scoped to the current "working as"
 // name; under real accounts this becomes the signed-in user across all teams.
 const COLUMNS = [
-  { key: "pinned", title: "Pinned", icon: Bookmark, blurb: "Notes you tunneled here to keep in view" },
+  { key: "pinned", title: "Pinned", icon: Bookmark, blurb: "Notes you yoinked here to keep in view" },
   { key: "working", title: "Working On", icon: Loader, blurb: "Steps assigned to you, still open" },
   { key: "completed", title: "Completed", icon: CheckCircle2, blurb: "Your steps, all wrapped up" },
   { key: "distributed", title: "Distributed", icon: Send, blurb: "Steps you handed to teammates" },
