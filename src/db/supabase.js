@@ -75,6 +75,8 @@ const WORKSPACE_SELECT = `
 `;
 
 async function loadWorkspace() {
+  const { data: auth } = await supabase.auth.getUser();
+  const myId = auth?.user?.id;
   const { data, error } = await supabase.from("teams").select(WORKSPACE_SELECT);
   if (error) throw error;
   const teams = (data || []).map((team) => {
@@ -82,6 +84,8 @@ async function loadWorkspace() {
     return {
       id: team.id,
       name: team.name,
+      // The caller's own role on this team — drives who may mint invites.
+      myRole: (team.memberships || []).find((m) => m.profiles?.id === myId)?.role || null,
       members: (team.memberships || []).map((m) => m.profiles?.display_name).filter(Boolean),
       projects: (team.boards || []).map((b) => ({
         id: b.id,
@@ -178,9 +182,51 @@ export const supabaseBackend = {
     if (error) throw error;
   },
   async setMembers() {
-    // Members are real profiles here; adding one is an email invite flow, not a
-    // name string. Wire that up as a dedicated invite feature.
+    // Members are real profiles here; you don't add them by name. Joining a team
+    // happens through the invite-code flow below (createInvite / redeemInvite).
     console.warn("setMembers is a no-op on the Supabase backend — use invites.");
+  },
+
+  /* ------------------------------ invites ------------------------------ */
+  // Admin mints a single-use code; server enforces the admin check and returns
+  // the new row (incl. its `code`).
+  async createInvite(teamId, role = "member") {
+    const { data, error } = await supabase.rpc("create_invite", {
+      _team_id: teamId,
+      _role: role,
+    });
+    if (error) throw error;
+    // A single-composite return comes back as an object; be defensive anyway.
+    return Array.isArray(data) ? data[0] : data;
+  },
+
+  // The team's still-live codes (not yet expired), for an admin to share or
+  // revoke. RLS hides these from non-admins.
+  async listInvites(teamId) {
+    const { data, error } = await supabase
+      .from("invite_codes")
+      .select("id, code, role, created_at, expires_at, uses")
+      .eq("team_id", teamId)
+      .gt("expires_at", new Date().toISOString())
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    return data || [];
+  },
+
+  async revokeInvite(inviteId) {
+    const { error } = await supabase.from("invite_codes").delete().eq("id", inviteId);
+    if (error) throw error;
+  },
+
+  // Redeem a code to join its team. Returns { teamId, teamName } on success and
+  // throws with a human-readable message otherwise (invalid / expired / already
+  // a member). Expiry is enforced in redeem_invite() on the server.
+  async redeemInvite(code) {
+    const { data, error } = await supabase.rpc("redeem_invite", { _code: code });
+    if (error) throw error;
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row) throw new Error("That invite code is not valid");
+    return { teamId: row.team_id, teamName: row.team_name };
   },
 
   /* ------------------------------ projects ----------------------------- */
@@ -238,6 +284,7 @@ export const supabaseBackend = {
       .on("postgres_changes", { event: "*", schema: "public", table: "checklist_items" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "decorations" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "tunnels" }, onChange)
+      .on("postgres_changes", { event: "*", schema: "public", table: "memberships" }, onChange)
       .subscribe();
     return () => supabase.removeChannel(channel);
   },

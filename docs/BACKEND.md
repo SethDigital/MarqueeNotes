@@ -111,9 +111,31 @@ The wiring is in place; what remains needs a real Supabase instance:
    rows in the Supabase dashboard. Fix any column/query mismatches in
    `src/db/supabase.js` (this is the shake-out the code hasn't had yet).
 4. Known simplifications to revisit: assignee/tunnel fields still round-trip via
-   member **display names** (should move to profile ids), and adding a member is
-   a no-op on the backend (needs a real email-invite flow). "Working On" drag
+   member **display names** (should move to profile ids). "Working On" drag
    sync is per-drop over Realtime; add Broadcast for smooth live frames later.
+
+## Joining a team: invite codes
+
+Adding a member isn't a name string here — people join through shareable invite
+codes ([`supabase/migrations/0002_invites.sql`](../supabase/migrations/0002_invites.sql)):
+
+- A team **admin** generates a code (Members tab → *Invite codes*). It's minted
+  server-side by `create_invite()`, which enforces the admin check and stamps
+  the code to expire **3 hours** out.
+- Anyone signed in redeems it (home screen → *Join with a code*).
+  `redeem_invite()` runs as `SECURITY DEFINER` so a not-yet-member can use it,
+  checks the code hasn't expired, and inserts the membership.
+- **Multi-use, time-limited**: one code lets the whole team join — drop it in
+  chat and everyone uses the same code until it lapses. A `uses` counter tracks
+  how many joined. Expiry is a server invariant, not a UI check. Users can hold
+  memberships in many teams, so redeeming just adds another.
+- To change the window, edit the `interval '3 hours'` in `create_invite()` and
+  the matching `INVITE_TTL_MS` in [`src/store.js`](../src/store.js).
+
+Apply `0002_invites.sql` after `0001_init.sql`. The whole flow is exercised
+end-to-end on the localStorage backend (which mirrors it in a single browser);
+the Supabase RPCs are written against the schema — give them a first live run
+before relying on them, same as the rest of `src/db/supabase.js`.
 
 Say the word once you have a project and I'll help work through the first
 real connection.

@@ -92,6 +92,43 @@ export function setTheme(t) {
 export const getMe = (teamId) => localStorage.getItem("marquee-notes-me-" + teamId) || "";
 export const setMe = (teamId, name) => localStorage.setItem("marquee-notes-me-" + teamId, name);
 
+/* ------------------------------- invites -------------------------------- */
+// Shareable team codes: one code, many joiners, good until it expires. The real
+// ones are minted server-side by gen_invite_code() in migration 0002; this
+// mirrors that alphabet so the demo backend produces the same look. Ambiguous
+// chars (0/O, 1/I/L) are left out.
+const INVITE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+
+// How long a code stays usable — keep in sync with the interval in
+// create_invite() (migration 0002). Used by the demo backend and the countdown.
+export const INVITE_TTL_MS = 3 * 60 * 60 * 1000; // 3 hours
+
+export function genInviteCode() {
+  let out = "";
+  for (let i = 0; i < 8; i++)
+    out += INVITE_ALPHABET[Math.floor(Math.random() * INVITE_ALPHABET.length)];
+  return out;
+}
+
+// Storage keeps the raw 8 chars; humans read it grouped as ABCD-EFGH.
+export const formatInviteCode = (code) =>
+  (code || "").replace(/[^A-Za-z0-9]/g, "").replace(/(.{4})(.{1,4})/, "$1-$2");
+
+// Normalize whatever someone typed/pasted back to the stored form.
+export const normalizeInviteCode = (code) =>
+  (code || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+
+// Human countdown to an expiry timestamp: "2h 45m", "12m", "<1m", or "" if past.
+export function formatTimeLeft(expiresAt) {
+  const ms = new Date(expiresAt).getTime() - Date.now();
+  if (ms <= 0) return "";
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return "<1m";
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
 export const NOTE_COLORS = ["#fef08a", "#fbcfe8", "#bae6fd", "#bbf7d0", "#fed7aa", "#ddd6fe"];
 
 export function newNote(index) {

@@ -276,6 +276,58 @@ body {
   border-bottom: 1px solid var(--panel-border);
 }
 
+/* ------------------------------ invites -------------------------------- */
+.head-actions { display: flex; gap: 8px; }
+
+.invite-panel {
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+.invite-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.invite-head h3 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.invite-head .hint { margin: 0; max-width: 46ch; }
+.invite-head .btn { flex: none; white-space: nowrap; }
+
+.invite-list { list-style: none; padding: 0; margin: 14px 0 0; max-width: 360px; }
+.invite-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--panel-border);
+}
+.invite-main { display: flex; align-items: center; gap: 6px; }
+.invite-meta {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.invite-meta .dot { margin: 0 6px; }
+.invite-code {
+  flex: 1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 1rem;
+  letter-spacing: 0.12em;
+  color: var(--text);
+  background: var(--control);
+  border: 1px solid var(--control-border);
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+
 /* -------------------------------- modal -------------------------------- */
 .modal-backdrop {
   position: fixed;
