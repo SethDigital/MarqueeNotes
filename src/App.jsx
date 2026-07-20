@@ -158,6 +158,7 @@ function Workspace({ user }) {
         onOpenProject={(projectId) => setView({ screen: "board", teamId: team.id, projectId })}
         onAddProject={(proj) => addProject(team.id, proj)}
         onSetMembers={(members) => setMembers(team.id, members)}
+        onJoinTeam={joinTeam}
         onDelete={() => { deleteTeam(team.id); setView({ screen: "home" }); }}
       />
     );
@@ -320,11 +321,12 @@ function NewTeamModal({ onClose, onCreate }) {
 
 /* ------------------------------- team ---------------------------------- */
 
-function TeamScreen({ team, fixedMe, onBack, onOpenProject, onAddProject, onSetMembers, onDelete }) {
+function TeamScreen({ team, fixedMe, onBack, onOpenProject, onAddProject, onSetMembers, onJoinTeam, onDelete }) {
   const [tab, setTab] = useState("projects");
   const [newProject, setNewProject] = useState("");
   const [newMember, setNewMember] = useState("");
   const [pinFilter, setPinFilter] = useState("all");
+  const [joining, setJoining] = useState(false);
   const [localMe, setLocalMe] = useState(() => getMe(team.id));
   const me = fixedMe || localMe;
   const canEditMembers = !usingBackend; // real members come from invites
@@ -414,7 +416,14 @@ function TeamScreen({ team, fixedMe, onBack, onOpenProject, onAddProject, onSetM
         )}
 
         {tab === "dashboard" && (
-          <PersonalDashboard team={team} me={me} onOpenProject={onOpenProject} />
+          <>
+            <div className="inline-form">
+              <button className="btn" title="Got a code from another team? Join it here" onClick={() => setJoining(true)}>
+                <Ticket size={16} /> Join with a code
+              </button>
+            </div>
+            <PersonalDashboard team={team} me={me} onOpenProject={onOpenProject} />
+          </>
         )}
 
         {tab === "pinned" && (
@@ -481,6 +490,8 @@ function TeamScreen({ team, fixedMe, onBack, onOpenProject, onAddProject, onSetM
           </>
         )}
       </main>
+
+      {joining && <JoinTeamModal onClose={() => setJoining(false)} onJoin={onJoinTeam} />}
     </div>
   );
 }
