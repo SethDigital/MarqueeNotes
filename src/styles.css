@@ -785,6 +785,10 @@ body {
 .completed-empty { color: var(--muted); font-size: 0.82rem; margin: 4px 0 0; }
 
 /* ------------------------------ My Board ------------------------------- */
+/* My Board is a board, not a settings page — let it use the whole window
+   instead of the reading-width .page column. */
+.myboard-page { max-width: none; }
+
 .myboard-section { margin-bottom: 22px; }
 .myboard-section-head {
   display: flex;
@@ -810,14 +814,40 @@ body {
 }
 
 /* The section surface reuses the board tokens — which now resolve to this
-   section's own [data-theme] — so each mini-board wears its chosen look. */
+   section's own [data-theme] — so each mini-board wears its chosen look. Its
+   height is set inline (dragged via .myboard-resize, persisted per team) and
+   overflowing notes scroll inside it. */
 .myboard-surface {
   border-radius: 10px;
   border: 6px solid var(--board-frame);
   background: var(--board-bg);
   box-shadow: var(--board-shadow);
   padding: 16px;
+  overflow-y: auto;
 }
+
+/* Grab bar under each section: drag to give that mini-board more room. */
+.myboard-resize {
+  height: 14px;
+  margin-top: 4px;
+  border-radius: 7px;
+  cursor: ns-resize;
+  touch-action: none;
+  position: relative;
+}
+.myboard-resize::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 56px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--control-border);
+}
+.myboard-resize:hover { background: var(--hover); }
+.myboard-resize:hover::after { background: var(--muted); }
 .myboard-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));

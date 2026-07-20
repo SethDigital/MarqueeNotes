@@ -126,13 +126,17 @@ function Workspace({ user }) {
     );
   };
 
+  // My Board is one click from every screen; remember where the user was so
+  // its Back button returns them there, not to the teams list.
+  const openMyBoard = () => setView({ screen: "myboard", from: view });
+
   if (view.screen === "myboard") {
     return (
       <PersonalBoard
         data={data}
         fixedMe={fixedMe}
         patchNote={patchNote}
-        onBack={() => setView({ screen: "home" })}
+        onBack={() => setView(view.from || { screen: "home" })}
       />
     );
   }
@@ -144,6 +148,7 @@ function Workspace({ user }) {
         project={project}
         fixedMe={fixedMe}
         onBack={() => setView({ screen: "team", teamId: team.id })}
+        onOpenMyBoard={openMyBoard}
         onPatchProject={(fn) => patchProject(team.id, project.id, fn)}
       />
     );
@@ -159,6 +164,7 @@ function Workspace({ user }) {
         onAddProject={(proj) => addProject(team.id, proj)}
         onSetMembers={(members) => setMembers(team.id, members)}
         onJoinTeam={joinTeam}
+        onOpenMyBoard={openMyBoard}
         onDelete={() => { deleteTeam(team.id); setView({ screen: "home" }); }}
       />
     );
@@ -170,7 +176,7 @@ function Workspace({ user }) {
       onAddTeam={addTeam}
       onOpenTeam={(teamId) => setView({ screen: "team", teamId })}
       onJoinTeam={joinTeam}
-      onOpenMyBoard={() => setView({ screen: "myboard" })}
+      onOpenMyBoard={openMyBoard}
       onSeedDemo={async () => setData(await db.seedDemo())}
     />
   );
@@ -321,7 +327,7 @@ function NewTeamModal({ onClose, onCreate }) {
 
 /* ------------------------------- team ---------------------------------- */
 
-function TeamScreen({ team, fixedMe, onBack, onOpenProject, onAddProject, onSetMembers, onJoinTeam, onDelete }) {
+function TeamScreen({ team, fixedMe, onBack, onOpenProject, onAddProject, onSetMembers, onJoinTeam, onOpenMyBoard, onDelete }) {
   const [tab, setTab] = useState("projects");
   const [newProject, setNewProject] = useState("");
   const [newMember, setNewMember] = useState("");
@@ -366,6 +372,9 @@ function TeamScreen({ team, fixedMe, onBack, onOpenProject, onAddProject, onSetM
         <button className="btn ghost" onClick={onBack}><ArrowLeft size={16} /> Teams</button>
         <h1>{team.name}</h1>
         {!fixedMe && <WorkingAs team={team} me={me} onChange={changeMe} />}
+        <button className="btn" title="Everything you've yoinked, across teams" onClick={onOpenMyBoard}>
+          <Bookmark size={16} /> My Board
+        </button>
         <ThemeSwitcher />
         <button
           className="btn ghost danger"

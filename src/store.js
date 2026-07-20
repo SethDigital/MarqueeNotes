@@ -112,6 +112,16 @@ export const getSectionTheme = (teamId) => {
 export const setSectionTheme = (teamId, t) =>
   localStorage.setItem("marquee-myboard-theme-" + teamId, t);
 
+// Each My Board section's surface height (px), dragged from its bottom edge and
+// remembered per team, same as the section theme.
+export const SECTION_MIN_HEIGHT = 220;
+export const getSectionHeight = (teamId) => {
+  const h = parseInt(localStorage.getItem("marquee-myboard-height-" + teamId), 10);
+  return Number.isFinite(h) ? Math.max(SECTION_MIN_HEIGHT, h) : 420;
+};
+export const setSectionHeight = (teamId, h) =>
+  localStorage.setItem("marquee-myboard-height-" + teamId, String(Math.round(h)));
+
 /* ------------------------------- invites -------------------------------- */
 // Shareable team codes: one code, many joiners, good until it expires. The real
 // ones are minted server-side by gen_invite_code() in migration 0002; this

@@ -3,8 +3,8 @@ import { ArrowLeft, Bookmark, Users } from "lucide-react";
 import {
   selectMyBoard, allMemberNames, THEMES,
   getGlobalMe, setGlobalMe, getSectionTheme, setSectionTheme,
+  getSectionHeight, setSectionHeight, SECTION_MIN_HEIGHT,
 } from "./store.js";
-import { usingBackend } from "./db/index.js";
 import StickyNote from "./StickyNote.jsx";
 
 // My Board — a single, cross-team personal surface holding every note you've
@@ -18,12 +18,33 @@ export default function PersonalBoard({ data, fixedMe, patchNote, onBack }) {
   const [demoMe, setDemoMe] = useState(() => getGlobalMe());
   const me = fixedMe || demoMe;
 
-  // Per-section themes, seeded from storage; changing one re-renders just here.
+  // Per-section themes and heights, seeded from storage; changing either
+  // re-renders just here and persists per team.
   const [themes, setThemes] = useState({});
+  const [heights, setHeights] = useState({});
   const themeFor = (teamId) => themes[teamId] || getSectionTheme(teamId);
+  const heightFor = (teamId) => heights[teamId] ?? getSectionHeight(teamId);
   const changeTheme = (teamId, t) => {
     setSectionTheme(teamId, t);
     setThemes((m) => ({ ...m, [teamId]: t }));
+  };
+
+  // Drag the bar under a section to give that mini-board more (or less) room.
+  const startResize = (teamId) => (e) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startH = heightFor(teamId);
+    const apply = (clientY) => Math.max(SECTION_MIN_HEIGHT, startH + (clientY - startY));
+    const move = (ev) => setHeights((m) => ({ ...m, [teamId]: apply(ev.clientY) }));
+    const up = (ev) => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      const h = apply(ev.clientY);
+      setSectionHeight(teamId, h);
+      setHeights((m) => ({ ...m, [teamId]: h }));
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
   };
 
   const pickMe = (name) => { setGlobalMe(name); setDemoMe(name); };
@@ -33,7 +54,7 @@ export default function PersonalBoard({ data, fixedMe, patchNote, onBack }) {
   return (
     <div className="screen">
       <header className="topbar">
-        <button className="btn ghost" onClick={onBack}><ArrowLeft size={16} /> Teams</button>
+        <button className="btn ghost" onClick={onBack}><ArrowLeft size={16} /> Back</button>
         <h1><Bookmark size={20} className="logo-pin" /> My Board</h1>
         {!fixedMe && (
           <label className="working-as" title="My Board gathers everything you've yoinked">
@@ -48,7 +69,7 @@ export default function PersonalBoard({ data, fixedMe, patchNote, onBack }) {
         )}
       </header>
 
-      <main className="page">
+      <main className="page myboard-page">
         {!me ? (
           <p className="hint">
             Pick your name up top and every note you&rsquo;ve yoinked gathers here, grouped by team.
@@ -74,7 +95,7 @@ export default function PersonalBoard({ data, fixedMe, patchNote, onBack }) {
                   </select>
                 </label>
               </header>
-              <div className="myboard-surface">
+              <div className="myboard-surface" style={{ height: heightFor(team.id) }}>
                 <div className="myboard-grid">
                   {entries.map(({ note, project }) => (
                     <StickyNote
@@ -88,6 +109,11 @@ export default function PersonalBoard({ data, fixedMe, patchNote, onBack }) {
                   ))}
                 </div>
               </div>
+              <div
+                className="myboard-resize"
+                title="Drag to resize this section"
+                onPointerDown={startResize(team.id)}
+              />
             </section>
           ))
         )}

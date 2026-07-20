@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from "react";
-import { Plus, ArrowLeft, ImagePlus, X, LayoutGrid, Layers } from "lucide-react";
+import { Plus, ArrowLeft, ImagePlus, X, LayoutGrid, Layers, Bookmark } from "lucide-react";
 import {
   newNote, getMe, setMe, tidyPositions, isNoteComplete,
   fileToDataURL, newDecoration, MAX_DECORATION_BYTES, DECORATION_TYPES,
@@ -10,7 +10,7 @@ import ThemeSwitcher from "./ThemeSwitcher.jsx";
 import StickyNote from "./StickyNote.jsx";
 import CompletedNotesModal from "./CompletedNotesModal.jsx";
 
-export default function BoardView({ team, project, fixedMe, onBack, onPatchProject }) {
+export default function BoardView({ team, project, fixedMe, onBack, onOpenMyBoard, onPatchProject }) {
   const canvasRef = useRef(null);
   const fileRef = useRef(null);
   const [localMe, setLocalMe] = useState(() => getMe(team.id));
@@ -118,6 +118,9 @@ export default function BoardView({ team, project, fixedMe, onBack, onPatchProje
         <button className="btn ghost" onClick={onBack}><ArrowLeft size={16} /> {team.name}</button>
         <h1>{project.name}</h1>
         {!fixedMe && <WorkingAs team={team} me={me} onChange={changeMe} />}
+        <button className="btn" title="Everything you've yoinked, across teams" onClick={onOpenMyBoard}>
+          <Bookmark size={16} /> My Board
+        </button>
         <ThemeSwitcher />
         <button
           className="btn"
