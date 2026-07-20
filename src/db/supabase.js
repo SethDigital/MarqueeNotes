@@ -150,13 +150,19 @@ async function writeNote(teamId, projectId, note) {
   if (keepIds.length) del = del.not("id", "in", `(${keepIds.join(",")})`);
   await del;
 
-  // Reconcile tunnels for the members named on the note.
+  // Reconcile tunnels for the members named on the note. ignoreDuplicates turns
+  // this into ON CONFLICT DO NOTHING rather than DO UPDATE — tunnels only ever
+  // carry (user_id, note_id), so a re-yoink of an already-yoinked note has
+  // nothing to update, and there's deliberately no UPDATE policy on tunnels
+  // (see 0001_init.sql) for RLS to allow it against.
   const tunnelIds = note.tunnels.map((n) => nameToId.get(n)).filter(Boolean);
-  if (tunnelIds.length)
-    await supabase.from("tunnels").upsert(
+  if (tunnelIds.length) {
+    const { error: tunnelErr } = await supabase.from("tunnels").upsert(
       tunnelIds.map((uid) => ({ user_id: uid, note_id: note.id })),
-      { onConflict: "user_id,note_id" }
+      { onConflict: "user_id,note_id", ignoreDuplicates: true }
     );
+    if (tunnelErr) throw tunnelErr;
+  }
   let delT = supabase.from("tunnels").delete().eq("note_id", note.id);
   if (tunnelIds.length) delT = delT.not("user_id", "in", `(${tunnelIds.join(",")})`);
   await delT;
