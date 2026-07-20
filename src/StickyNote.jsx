@@ -162,7 +162,7 @@ export default function StickyNote({ note, members, me, onChange, onDelete, vari
           ))}
         </div>
         {!isStatic && (
-          <button className="icon-btn" title="Take down this note" onClick={onDelete}>
+          <button className="icon-btn" title="Take this note down (kept in Completed)" onClick={onDelete}>
             <Trash2 size={15} />
           </button>
         )}

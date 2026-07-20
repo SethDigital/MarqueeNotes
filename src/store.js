@@ -43,12 +43,14 @@ function migrateNote(n, i) {
     rot: 0,
     pin: null,
     completedAt: null,
+    deletedAt: null,
     ...n,
     x: typeof n.x === "number" ? n.x : 28 + (i % 4) * 260,
     y: typeof n.y === "number" ? n.y : 28 + Math.floor(i / 4) * 250,
     createdAt: n.createdAt || new Date().toISOString(),
     deadlineAt: n.deadlineAt || null,
     completedAt: n.completedAt || null,
+    deletedAt: n.deletedAt || null,
     // `tunnels` is the underlying field for the Yoink feature — names who
     // yoinked this note onto their personal board.
     tunnels: Array.isArray(n.tunnels) ? n.tunnels : [],
@@ -172,6 +174,7 @@ export function newNote(index) {
     createdAt: new Date().toISOString(),
     deadlineAt: null,
     completedAt: null,
+    deletedAt: null,
     items: [],
     pin: null,
     tunnels: [],
@@ -188,6 +191,11 @@ export function newItem(text) {
 // automatically when the last step is checked, or explicitly via "Mark
 // complete" (which lets a note be ended early with steps still open).
 export const isNoteComplete = (note) => Boolean(note.completedAt);
+
+// "Deleting" a note is a soft archive: it leaves the board (and every active
+// view) but is kept, with its step-completion record intact, in the board's
+// Completed stack. Active views should show only notes where this is true.
+export const isNoteActive = (note) => !note.deletedAt;
 
 // Arrange notes into a tidy grid — the "Tidy up" button. Free-drag is the
 // default; this snaps everything back into columns without losing any notes.
@@ -236,6 +244,7 @@ export function demoData() {
     createdAt: daysFromNow(-3),
     deadlineAt,
     completedAt: null,
+    deletedAt: null,
     items: items.map(([text, done, assignee, assignedBy, doneBy, doneAtDays]) => ({
       id: uid(), text, done,
       assignee: assignee || null, assignedBy: assignedBy || null, doneBy: doneBy || null,
@@ -282,6 +291,12 @@ export function demoData() {
                 ["Color palette", true, "Avery", "Jordan", "Avery", -1],
                 ["Typography scale", true, "Sam", "Jordan", "Sam", -1],
               ], { completedAt: daysFromNow(-1), tunnels: ["Avery"] }),
+              // A scrapped note: deleted with only one step done. It's off the
+              // board but kept in the Completed stack, its step record intact.
+              note("Old landing concept", "#fed7aa", 330, 320, null, [
+                ["Draft hero copy", true, "Sam", "Sam", "Sam", -2],
+                ["Pick a layout", false],
+              ], { completedAt: daysFromNow(-2), deletedAt: daysFromNow(-2) }),
             ],
           },
           {
@@ -310,6 +325,7 @@ export function selectDashboard(team, me) {
   if (!me) return cols;
   for (const project of team.projects)
     for (const note of project.notes) {
+      if (!isNoteActive(note)) continue; // archived notes live only in Completed
       const entry = { note, project };
       const mine = note.items.filter((i) => i.assignee === me);
 
@@ -335,7 +351,7 @@ export function selectMyBoard(data, me) {
     const entries = [];
     for (const project of team.projects || [])
       for (const note of project.notes || [])
-        if ((note.tunnels || []).includes(me)) entries.push({ note, project });
+        if (isNoteActive(note) && (note.tunnels || []).includes(me)) entries.push({ note, project });
     if (entries.length) sections.push({ team, entries });
   }
   return sections;

@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect } from "react";
 import { Plus, ArrowLeft, ImagePlus, X, LayoutGrid, Layers, Bookmark } from "lucide-react";
 import {
-  newNote, getMe, setMe, tidyPositions, isNoteComplete,
+  newNote, getMe, setMe, tidyPositions, isNoteComplete, isNoteActive,
   fileToDataURL, newDecoration, MAX_DECORATION_BYTES, DECORATION_TYPES,
 } from "./store.js";
 import { db, usingBackend } from "./db/index.js";
@@ -16,6 +16,9 @@ export default function BoardView({ team, project, fixedMe, onBack, onOpenMyBoar
   const [localMe, setLocalMe] = useState(() => getMe(team.id));
   const me = fixedMe || localMe;
   const [completedOpen, setCompletedOpen] = useState(false);
+  // Notes still on the board vs. the Completed stack (finished-in-place AND
+  // soft-deleted notes — both carry a completedAt).
+  const boardNotes = project.notes.filter(isNoteActive);
   const completedNotes = project.notes.filter(isNoteComplete);
 
   const changeMe = (name) => { setMe(team.id, name); setLocalMe(name); };
@@ -60,17 +63,26 @@ export default function BoardView({ team, project, fixedMe, onBack, onOpenMyBoar
     db.createNote(team.id, project.id, note);
   };
 
+  // "Deleting" a note archives it: it leaves the board but is kept in the
+  // Completed stack with its step-completion record intact. Marking it completed
+  // (if it wasn't already) is what lands it there; deletedAt is what removes it
+  // from the board. Persist immediately — this isn't debounced typing.
   const deleteNote = (noteId) => {
-    cancelPending(noteId); // drop any queued write for a note we're removing
-    onPatchProject((p) => ({ ...p, notes: p.notes.filter((n) => n.id !== noteId) }));
-    db.deleteNote(team.id, project.id, noteId);
+    const current = project.notes.find((n) => n.id === noteId);
+    if (!current) return;
+    cancelPending(noteId); // supersede any queued edit with this archive write
+    const now = new Date().toISOString();
+    const archived = { ...current, deletedAt: now, completedAt: current.completedAt || now };
+    onPatchProject((p) => ({ ...p, notes: p.notes.map((n) => (n.id === noteId ? archived : n)) }));
+    db.updateNote(team.id, project.id, archived);
   };
 
-  // "Tidy up" — snap the free-floating notes back into neat columns.
+  // "Tidy up" — snap the free-floating notes back into neat columns. Only the
+  // notes actually on the board; archived ones aren't shown, so skip them.
   const tidyUp = () => {
     const width = canvasRef.current?.clientWidth || 1200;
-    const slots = tidyPositions(project.notes.length, width);
-    const positions = project.notes.map((n, i) => ({ id: n.id, x: slots[i].x, y: slots[i].y }));
+    const slots = tidyPositions(boardNotes.length, width);
+    const positions = boardNotes.map((n, i) => ({ id: n.id, x: slots[i].x, y: slots[i].y }));
     const by = new Map(positions.map((x) => [x.id, x]));
     // Stale queued writes hold pre-tidy coordinates; drop them so they can't
     // undo the new layout.
@@ -158,11 +170,11 @@ export default function BoardView({ team, project, fixedMe, onBack, onOpenMyBoar
             />
           ))}
 
-          {project.notes.length === 0 && (
+          {boardNotes.length === 0 && (
             <p className="board-empty">A clean board. Stick up the first note, then drag it anywhere.</p>
           )}
 
-          {project.notes.map((note) => (
+          {boardNotes.map((note) => (
             <StickyNote
               key={note.id}
               note={note}

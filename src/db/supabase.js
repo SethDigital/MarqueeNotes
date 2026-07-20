@@ -39,6 +39,7 @@ function rowToNote(row, idToName) {
     createdAt: row.created_at,
     deadlineAt: row.deadline_at,
     completedAt: row.completed_at,
+    deletedAt: row.deleted_at,
     pin:
       row.pin === "team"
         ? { to: "team" }
@@ -68,7 +69,7 @@ const WORKSPACE_SELECT = `
   boards (
     id, name,
     notes (
-      id, title, color, rot, x, y, created_at, deadline_at, completed_at, pin, pinned_member,
+      id, title, color, rot, x, y, created_at, deadline_at, completed_at, deleted_at, pin, pinned_member,
       checklist_items ( id, text, done, done_at, position, assignee_id, assigned_by_id, done_by_id ),
       tunnels ( user_id )
     ),
@@ -126,6 +127,7 @@ async function writeNote(teamId, projectId, note) {
     y: note.y,
     deadline_at: note.deadlineAt,
     completed_at: note.completedAt || null,
+    deleted_at: note.deletedAt || null,
     pin: note.pin ? note.pin.to : "none",
     pinned_member: note.pin?.to === "member" ? nameToId.get(note.pin.member) || null : null,
   });

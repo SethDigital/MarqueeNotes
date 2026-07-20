@@ -167,5 +167,17 @@ exercised end-to-end on the localStorage backend; the Supabase mappings in
 `src/db/supabase.js` are written against the schema — give them a first live run,
 same caveat as the rest.
 
+## Soft-deleting notes
+
+"Deleting" a note is an archive, not a removal
+([`0004_soft_delete.sql`](../supabase/migrations/0004_soft_delete.sql)): the
+client stamps `notes.completed_at` (so it appears in the board's Completed
+stack, checklist steps and their done-state kept intact) **and**
+`notes.deleted_at` (so it leaves the board and every active view — dashboard,
+pinned, My Board, project counts). The delete button therefore issues an
+`UPDATE`, not a `DELETE`; no new RLS policy is needed since team members can
+already update notes. Apply `0004` after `0003` — one nullable, idempotent
+column (`add column if not exists`).
+
 Say the word once you have a project and I'll help work through the first
 real connection.

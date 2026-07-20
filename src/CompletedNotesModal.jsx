@@ -31,6 +31,7 @@ function CompletedRow({ note }) {
       <button className="completed-row-head" onClick={() => setOpen((v) => !v)}>
         <ChevronRight size={15} className="completed-chevron" />
         <span className="completed-title">{note.title || "Untitled note"}</span>
+        {note.deletedAt && <span className="completed-removed">Removed</span>}
         <span className="completed-when">{fmt(note.completedAt)}</span>
       </button>
       {open && (

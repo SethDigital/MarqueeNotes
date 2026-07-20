@@ -752,6 +752,18 @@ body {
 .completed-chevron { transition: transform 0.15s ease; flex: none; color: var(--muted); }
 .completed-row.open .completed-chevron { transform: rotate(90deg); }
 .completed-title { flex: 1; font-weight: 600; }
+.completed-removed {
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--danger);
+  border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  padding: 1px 6px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
 .completed-when { color: var(--muted); font-size: 0.8rem; white-space: nowrap; }
 
 .completed-detail { padding: 4px 14px 12px 24px; }

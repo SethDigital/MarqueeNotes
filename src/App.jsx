@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
   Plus, Users, ArrowLeft, Pin, Trash2, X, FolderOpen, Sparkles, LayoutDashboard, Ticket, Bookmark,
 } from "lucide-react";
-import { uid, getMe, setMe } from "./store.js";
+import { uid, getMe, setMe, isNoteActive } from "./store.js";
 import { db, usingBackend } from "./db/index.js";
 import AuthGate from "./AuthGate.jsx";
 import BoardView from "./BoardView.jsx";
@@ -359,7 +359,7 @@ function TeamScreen({ team, fixedMe, onBack, onOpenProject, onAddProject, onSetM
   };
 
   const pinned = team.projects.flatMap((p) =>
-    p.notes.filter((n) => n.pin).map((n) => ({ project: p, note: n }))
+    p.notes.filter((n) => n.pin && isNoteActive(n)).map((n) => ({ project: p, note: n }))
   ).filter(({ note }) => {
     if (pinFilter === "all") return true;
     if (pinFilter === "team") return note.pin.to === "team";
@@ -411,15 +411,18 @@ function TeamScreen({ team, fixedMe, onBack, onOpenProject, onAddProject, onSetM
               <p className="hint">No boards yet — add a project above and it gets its own board.</p>
             )}
             <div className="card-grid">
-              {team.projects.map((p) => (
-                <button key={p.id} className="card" onClick={() => onOpenProject(p.id)}>
-                  <div className="card-title">{p.name}</div>
-                  <div className="card-sub">
-                    {p.notes.length} note{p.notes.length === 1 ? "" : "s"}
-                    {p.notes.some((n) => n.pin) && <span className="pin-badge"><Pin size={12} /> pinned</span>}
-                  </div>
-                </button>
-              ))}
+              {team.projects.map((p) => {
+                const active = p.notes.filter(isNoteActive);
+                return (
+                  <button key={p.id} className="card" onClick={() => onOpenProject(p.id)}>
+                    <div className="card-title">{p.name}</div>
+                    <div className="card-sub">
+                      {active.length} note{active.length === 1 ? "" : "s"}
+                      {active.some((n) => n.pin) && <span className="pin-badge"><Pin size={12} /> pinned</span>}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </>
         )}
