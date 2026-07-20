@@ -18,10 +18,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 22
       - run: npm install
       - run: npm run build
         # The publishable (anon) key is safe to expose — it ships in the browser
@@ -31,7 +31,7 @@ jobs:
         env:
           VITE_SUPABASE_URL: https://doqokatwfbetiasadnfb.supabase.co
           VITE_SUPABASE_ANON_KEY: sb_publishable_C1QhXW-JnN33uOrvxMBpiQ_vB9RyRFZ
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: dist
 
@@ -43,4 +43,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
