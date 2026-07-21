@@ -49,6 +49,10 @@ function migrateNote(n, i) {
     completedAt: null,
     deletedAt: null,
     ...n,
+    // Sanitize the fill color on load: older or corrupted saves may carry a
+    // non-string color (object/array/number) that would throw in the render
+    // path. Fall back to a default note color instead of preserving it.
+    color: normalizeHexColor(n.color) || NOTE_COLORS[i % NOTE_COLORS.length],
     x: typeof n.x === "number" ? n.x : 28 + (i % 4) * 260,
     y: typeof n.y === "number" ? n.y : 28 + Math.floor(i / 4) * 250,
     w: typeof n.w === "number" ? n.w : 240,
@@ -305,8 +309,11 @@ export const NOTE_COLORS = ["#fef08a", "#fbcfe8", "#bae6fd", "#bbf7d0", "#fed7aa
 // Validate/normalize a typed-or-pasted hex color to a full 6-digit form (adds
 // the leading #, expands 3-digit shorthand). Returns null if it's not a valid
 // hex color, so callers can leave a draft in progress instead of clobbering it.
+// Never throws — non-string input (object/array/number from corrupted saves)
+// coerces to a string and is rejected as null rather than throwing on .trim().
 export function normalizeHexColor(raw) {
-  let v = (raw || "").trim();
+  if (typeof raw !== "string") return null;
+  let v = raw.trim();
   if (!v) return null;
   if (v[0] !== "#") v = "#" + v;
   const three = /^#([0-9a-fA-F]{3})$/.exec(v);
@@ -339,10 +346,12 @@ export function gradientCss(g) {
 
 // Average the three stops of a gradient into one representative hex, so all the
 // existing color-mix borders/glow (which need a solid) keep working when a note
-// wears a gradient. Returns the solid color untouched otherwise.
+// wears a gradient. Returns the solid color untouched otherwise. Always returns
+// a valid hex string — a fallback is used if `color` is malformed — so a single
+// bad note can never throw and blank the whole board.
 export function representativeSolid(color, gradient) {
   const grad = normalizeGradient(gradient);
-  if (!grad) return color;
+  if (!grad) return normalizeHexColor(color) || "#cccccc";
   const avg = grad.stops.reduce(
     (acc, hex) => { const c = hexToRgbObj(hex); return { r: acc.r + c.r, g: acc.g + c.g, b: acc.b + c.b }; },
     { r: 0, g: 0, b: 0 }
@@ -361,8 +370,10 @@ export function smartTextColor(color, gradient) {
 }
 
 // --- internal rgb helpers for the color math above ---
+// Defensive: coerces anything into a hex string first, so callers can never
+// throw on a malformed color value that slipped through migration.
 function hexToRgbObj(hex) {
-  const v = normalizeHexColor(hex) || "#000000";
+  const v = normalizeHexColor(hex) || "#cccccc";
   return {
     r: parseInt(v.slice(1, 3), 16),
     g: parseInt(v.slice(3, 5), 16),
