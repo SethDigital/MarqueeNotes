@@ -42,7 +42,7 @@ auth.users ──1:1── profiles
 profiles ──< memberships >── teams          (membership.role = admin | member)
 teams ──< boards ──< notes ──< checklist_items
 notes ──< tunnels >── profiles              (a note pinned onto a user's dashboard)
-boards ──< decorations
+boards ──< stickers ──< decorations         (a sticker uploaded once, placed many times)
 ```
 
 - **Roles live on `memberships`**, per team — admin of one team, member of another.
@@ -178,6 +178,37 @@ pinned, My Board, project counts). The delete button therefore issues an
 `UPDATE`, not a `DELETE`; no new RLS policy is needed since team members can
 already update notes. Apply `0004` after `0003` — one nullable, idempotent
 column (`add column if not exists`).
+
+## Note color
+
+`notes.color` was always a free-form string, so letting people pick any color
+(native color picker or a typed hex code, alongside the preset swatches) is a
+UI-only change — see `normalizeHexColor` in `src/store.js` and the popover in
+`src/StickyNote.jsx`. No migration.
+
+## Stickers (reusable image library)
+
+"Decorate" is now "Stickers"
+([`0005_stickers.sql`](../supabase/migrations/0005_stickers.sql)): uploading an
+image adds it to the board's library instead of gluing it to one spot, so any
+team member can drop it onto the canvas again without re-uploading.
+
+- **`stickers`** — one row per unique upload (`board_id`, `src`).
+- **`decorations`** — now just a *placement*: `sticker_id` + position/size.
+  Many decorations can reference the same sticker.
+- Uploading creates a sticker **and** places one instance (matching the old
+  "pick a file, it appears" behavior); picking an existing sticker from the
+  library just adds another placement. Removing a sticker from the library
+  takes every placement of it down too (`sticker_id` is `on delete cascade`).
+- The migration backfills any pre-existing decorations (inline `src`, no
+  `sticker_id`) into their own one-off sticker row before dropping
+  `decorations.src` — safe on a fresh project (nothing to backfill) and lossless
+  on one with real data.
+
+Apply `0005` after `0004`. Exercised end-to-end on the localStorage backend
+(which mirrors the library/placement split via `store.js`'s `load()` migration
+for old-shape data); the Supabase mappings in `src/db/supabase.js` are written
+against the schema — same first-live-run caveat as the rest.
 
 Say the word once you have a project and I'll help work through the first
 real connection.

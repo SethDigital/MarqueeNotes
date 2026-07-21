@@ -14,7 +14,8 @@
 //         pin: null | { to: "team" } | { to: "member", member },
 //         tunnels: [string]                      // names who pinned this to their dashboard
 //       }],
-//       decorations: [{ id, src, x, y, w }]
+//       stickers: [{ id, src }],            // reusable image library for the board
+//       decorations: [{ id, stickerId, x, y, w }]  // placed instances of a sticker
 //     }]
 //   }]
 // }
@@ -60,13 +61,33 @@ function migrateNote(n, i) {
   };
 }
 
+// Bring a project's images up to the sticker-library shape. Runs on load so
+// boards saved before stickers existed (decorations carrying their own inline
+// `src`) keep working: each unique image becomes a library entry, and the
+// decoration that placed it is rewritten to just reference it.
+function migrateProjectAssets(p) {
+  const stickers = Array.isArray(p.stickers) ? p.stickers : [];
+  const bySrc = new Map(stickers.map((s) => [s.src, s.id]));
+  p.decorations = (p.decorations || []).map((d) => {
+    if (d.stickerId) return d; // already in the current shape
+    let stickerId = bySrc.get(d.src);
+    if (!stickerId) {
+      stickerId = uid();
+      stickers.push({ id: stickerId, src: d.src });
+      bySrc.set(d.src, stickerId);
+    }
+    return { id: d.id, stickerId, x: d.x, y: d.y, w: d.w };
+  });
+  p.stickers = stickers;
+}
+
 export function load() {
   try {
     const data = JSON.parse(localStorage.getItem(KEY));
     if (data && Array.isArray(data.teams)) {
       for (const t of data.teams)
         for (const p of t.projects) {
-          p.decorations = p.decorations || [];
+          migrateProjectAssets(p);
           p.notes = (p.notes || []).map(migrateNote);
         }
       return data;
@@ -223,15 +244,17 @@ export function tidyPositions(count, boardWidth) {
   }));
 }
 
-/* --------------------- decoration upload framework ---------------------- */
-// Decorations are images (PNG/JPEG/WebP, or transparent GIFs) users place on
-// a board for personality. For the demo they're stored inline as data URLs so
-// no backend is needed; the size cap keeps us inside localStorage quota.
+/* ------------------------- sticker upload framework ---------------------- */
+// A sticker is a reusable image (PNG/JPEG/WebP, or transparent GIF) uploaded
+// once and kept in the board's library — placing it on the canvas (a
+// "decoration") just references its id, so dropping the same image on again
+// never re-uploads it. For the demo the image is stored inline as a data URL
+// so no backend is needed; the size cap keeps us inside localStorage quota.
 // When the real backend lands, swap fileToDataURL for an upload call and
-// store the returned URL in `src` — nothing else changes.
+// store the returned URL in the sticker's `src` — nothing else changes.
 
-export const MAX_DECORATION_BYTES = 900 * 1024; // ~0.9 MB per image
-export const DECORATION_TYPES = "image/png,image/gif,image/jpeg,image/webp";
+export const MAX_STICKER_BYTES = 900 * 1024; // ~0.9 MB per image
+export const STICKER_TYPES = "image/png,image/gif,image/jpeg,image/webp";
 
 export function fileToDataURL(file) {
   return new Promise((resolve, reject) => {
@@ -242,9 +265,16 @@ export function fileToDataURL(file) {
   });
 }
 
-export function newDecoration(src, index) {
-  // Cascade new decorations so several uploads don't stack invisibly.
-  return { id: uid(), src, x: 48 + (index % 4) * 56, y: 48 + (index % 3) * 48, w: 180 };
+// The library entry — one per unique upload.
+export function newSticker(src) {
+  return { id: uid(), src };
+}
+
+// One placement of a sticker on the canvas. Many of these can point at the
+// same stickerId.
+export function newDecoration(stickerId, index) {
+  // Cascade new placements so several drops don't stack invisibly.
+  return { id: uid(), stickerId, x: 48 + (index % 4) * 56, y: 48 + (index % 3) * 48, w: 180 };
 }
 
 /* ------------------------------ demo data ------------------------------- */
@@ -280,6 +310,7 @@ export function demoData() {
           {
             id: uid(),
             name: "Website Refresh",
+            stickers: [],
             decorations: [],
             notes: [
               // Homepage hero: Avery's step is done (Completed), and Avery
@@ -318,6 +349,7 @@ export function demoData() {
           {
             id: uid(),
             name: "Spring Campaign",
+            stickers: [],
             decorations: [],
             notes: [
               note("Social posts", "#fbcfe8", 60, 60, daysFromNow(5), [

@@ -1,25 +1,29 @@
 import React, { useRef, useState, useEffect } from "react";
-import { Plus, ArrowLeft, ImagePlus, X, LayoutGrid, Layers, Bookmark } from "lucide-react";
+import { Plus, ArrowLeft, X, LayoutGrid, Layers, Bookmark, Sticker as StickerIcon } from "lucide-react";
 import {
   newNote, getMe, setMe, tidyPositions, isNoteComplete, isNoteActive,
-  fileToDataURL, newDecoration, MAX_DECORATION_BYTES, DECORATION_TYPES,
+  fileToDataURL, newDecoration, newSticker, MAX_STICKER_BYTES,
 } from "./store.js";
 import { db, usingBackend } from "./db/index.js";
 import WorkingAs from "./WorkingAs.jsx";
 import ThemeSwitcher from "./ThemeSwitcher.jsx";
 import StickyNote from "./StickyNote.jsx";
 import CompletedNotesModal from "./CompletedNotesModal.jsx";
+import StickersModal from "./StickersModal.jsx";
 
 export default function BoardView({ team, project, fixedMe, onBack, onOpenMyBoard, onPatchProject }) {
   const canvasRef = useRef(null);
-  const fileRef = useRef(null);
   const [localMe, setLocalMe] = useState(() => getMe(team.id));
   const me = fixedMe || localMe;
   const [completedOpen, setCompletedOpen] = useState(false);
+  const [stickersOpen, setStickersOpen] = useState(false);
   // Notes still on the board vs. the Completed stack (finished-in-place AND
   // soft-deleted notes — both carry a completedAt).
   const boardNotes = project.notes.filter(isNoteActive);
   const completedNotes = project.notes.filter(isNoteComplete);
+  // Placed decorations only carry a stickerId; resolve each to its image here
+  // so <Decoration> stays a dumb renderer.
+  const stickerSrc = new Map(project.stickers.map((s) => [s.id, s.src]));
 
   const changeMe = (name) => { setMe(team.id, name); setLocalMe(name); };
 
@@ -91,24 +95,42 @@ export default function BoardView({ team, project, fixedMe, onBack, onOpenMyBoar
     db.updateNotePositions(team.id, project.id, positions);
   };
 
-  /* ------------------- decoration upload framework -------------------- */
-  // "Decorate" opens a hidden file input. The chosen image (PNG, JPEG, WebP,
-  // or transparent GIF) is read as a data URL and saved with the board, then
-  // rendered as a draggable, resizable sticker behind the notes.
-  const uploadDecoration = async (e) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    if (file.size > MAX_DECORATION_BYTES) {
+  /* ------------------------ sticker library + placement ----------------- */
+  // A "sticker" is the reusable image asset — stays with the board once
+  // uploaded. A "decoration" is one placement of a sticker on the canvas;
+  // many can point at the same sticker, so dropping it on again never
+  // re-uploads. Uploading adds a library entry AND places one instance,
+  // matching the old "pick a file, it appears" behavior; picking an existing
+  // sticker from the library just adds another placement.
+  const uploadSticker = async (file) => {
+    if (file.size > MAX_STICKER_BYTES) {
       window.alert(
-        `That image is ${(file.size / 1024 / 1024).toFixed(1)} MB — the demo build keeps decorations under ${(MAX_DECORATION_BYTES / 1024 / 1024).toFixed(1)} MB so boards stay snappy.`
+        `That image is ${(file.size / 1024 / 1024).toFixed(1)} MB — the demo build keeps stickers under ${(MAX_STICKER_BYTES / 1024 / 1024).toFixed(1)} MB so boards stay snappy.`
       );
       return;
     }
     const src = await fileToDataURL(file);
-    const deco = newDecoration(src, project.decorations.length);
+    const sticker = newSticker(src);
+    onPatchProject((p) => ({ ...p, stickers: [...p.stickers, sticker] }));
+    db.createSticker(team.id, project.id, sticker);
+    placeSticker(sticker.id);
+  };
+
+  const placeSticker = (stickerId) => {
+    const deco = newDecoration(stickerId, project.decorations.length);
     onPatchProject((p) => ({ ...p, decorations: [...p.decorations, deco] }));
     db.createDecoration(team.id, project.id, deco);
+  };
+
+  // Removing a sticker from the library takes every placement of it down too
+  // (mirrors the ON DELETE CASCADE on decorations.sticker_id — see 0005_stickers.sql).
+  const removeSticker = (stickerId) => {
+    onPatchProject((p) => ({
+      ...p,
+      stickers: p.stickers.filter((s) => s.id !== stickerId),
+      decorations: p.decorations.filter((d) => d.stickerId !== stickerId),
+    }));
+    db.deleteSticker(team.id, project.id, stickerId);
   };
 
   const updateDecoration = (decorId, fn) => {
@@ -145,15 +167,8 @@ export default function BoardView({ team, project, fixedMe, onBack, onOpenMyBoar
         <button className="btn" title="Line the notes up in neat columns" onClick={tidyUp}>
           <LayoutGrid size={16} /> Tidy up
         </button>
-        <input
-          ref={fileRef}
-          type="file"
-          accept={DECORATION_TYPES}
-          style={{ display: "none" }}
-          onChange={uploadDecoration}
-        />
-        <button className="btn" title="Add an image or GIF to the board" onClick={() => fileRef.current.click()}>
-          <ImagePlus size={16} /> Decorate
+        <button className="btn" title="Reusable images for this board" onClick={() => setStickersOpen(true)}>
+          <StickerIcon size={16} /> Stickers
         </button>
         <button className="btn primary" onClick={addNote}><Plus size={16} /> New note</button>
       </header>
@@ -165,6 +180,7 @@ export default function BoardView({ team, project, fixedMe, onBack, onOpenMyBoar
             <Decoration
               key={d.id}
               decor={d}
+              src={stickerSrc.get(d.stickerId)}
               onChange={(fn) => updateDecoration(d.id, fn)}
               onDelete={() => deleteDecoration(d.id)}
             />
@@ -194,14 +210,25 @@ export default function BoardView({ team, project, fixedMe, onBack, onOpenMyBoar
           onClose={() => setCompletedOpen(false)}
         />
       )}
+
+      {stickersOpen && (
+        <StickersModal
+          stickers={project.stickers}
+          onUpload={uploadSticker}
+          onPlace={placeSticker}
+          onDelete={removeSticker}
+          onClose={() => setStickersOpen(false)}
+        />
+      )}
     </div>
   );
 }
 
 /* ---------------------------- decorations ------------------------------- */
-// A decoration is a floating image the user can drag anywhere on the board
-// and resize from its corner handle. Stored per-project in store.js.
-function Decoration({ decor, onChange, onDelete }) {
+// A decoration is one placement of a sticker: position/size only, dragged
+// anywhere and resized from its corner handle. `src` is resolved by the
+// caller from the sticker library (decor itself just carries a stickerId).
+function Decoration({ decor, src, onChange, onDelete }) {
   const [live, setLive] = useState(null);
 
   const track = (e, apply) => {
@@ -231,6 +258,8 @@ function Decoration({ decor, onChange, onDelete }) {
   const startResize = (e) =>
     track(e, (dx) => ({ x: decor.x, y: decor.y, w: Math.max(48, decor.w + dx) }));
 
+  if (!src) return null; // its sticker was just removed from the library
+
   const pos = live || decor;
   return (
     <div
@@ -238,8 +267,8 @@ function Decoration({ decor, onChange, onDelete }) {
       style={{ left: pos.x, top: pos.y, width: pos.w }}
       onPointerDown={startDrag}
     >
-      <img src={decor.src} alt="" draggable={false} />
-      <button className="icon-btn decor-delete" title="Remove decoration" onClick={onDelete}>
+      <img src={src} alt="" draggable={false} />
+      <button className="icon-btn decor-delete" title="Remove this placement" onClick={onDelete}>
         <X size={13} />
       </button>
       <div className="decor-resize" title="Drag to resize" onPointerDown={startResize} />

@@ -116,6 +116,21 @@ export const localBackend = {
     });
   },
 
+  /* ------------------------------ stickers ------------------------------ */
+  async createSticker(teamId, projectId, sticker) {
+    mutate((d) => findProject(d, teamId, projectId)?.stickers.push(sticker));
+  },
+  // Removing a sticker from the library takes every placement of it down too —
+  // mirrors the ON DELETE CASCADE from decorations.sticker_id on the backend.
+  async deleteSticker(teamId, projectId, stickerId) {
+    mutate((d) => {
+      const p = findProject(d, teamId, projectId);
+      if (!p) return;
+      p.stickers = p.stickers.filter((s) => s.id !== stickerId);
+      p.decorations = p.decorations.filter((dec) => dec.stickerId !== stickerId);
+    });
+  },
+
   /* ---------------------------- decorations ---------------------------- */
   async createDecoration(teamId, projectId, decoration) {
     mutate((d) => findProject(d, teamId, projectId)?.decorations.push(decoration));

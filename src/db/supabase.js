@@ -73,7 +73,8 @@ const WORKSPACE_SELECT = `
       checklist_items ( id, text, done, done_at, position, assignee_id, assigned_by_id, done_by_id ),
       tunnels ( user_id )
     ),
-    decorations ( id, src, x, y, w )
+    stickers ( id, src ),
+    decorations ( id, sticker_id, x, y, w )
   )
 `;
 
@@ -94,8 +95,9 @@ async function loadWorkspace() {
         id: b.id,
         name: b.name,
         notes: (b.notes || []).map((n) => rowToNote(n, idToName)),
+        stickers: (b.stickers || []).map((s) => ({ id: s.id, src: s.src })),
         decorations: (b.decorations || []).map((d) => ({
-          id: d.id, src: d.src, x: d.x, y: d.y, w: d.w,
+          id: d.id, stickerId: d.sticker_id, x: d.x, y: d.y, w: d.w,
         })),
       })),
     };
@@ -266,11 +268,25 @@ export const supabaseBackend = {
       await supabase.from("notes").update({ x: p.x, y: p.y }).eq("id", p.id);
   },
 
+  /* ------------------------------ stickers ------------------------------ */
+  async createSticker(teamId, projectId, sticker) {
+    const { error } = await supabase
+      .from("stickers")
+      .insert({ id: sticker.id, board_id: projectId, src: sticker.src });
+    if (error) throw error;
+  },
+  // ON DELETE CASCADE on decorations.sticker_id takes every placement of this
+  // sticker down with it — see 0005_stickers.sql.
+  async deleteSticker(teamId, projectId, stickerId) {
+    const { error } = await supabase.from("stickers").delete().eq("id", stickerId);
+    if (error) throw error;
+  },
+
   /* ---------------------------- decorations ---------------------------- */
   async createDecoration(teamId, projectId, decoration) {
     const { error } = await supabase.from("decorations").insert({
       id: decoration.id, board_id: projectId,
-      src: decoration.src, x: decoration.x, y: decoration.y, w: decoration.w,
+      sticker_id: decoration.stickerId, x: decoration.x, y: decoration.y, w: decoration.w,
     });
     if (error) throw error;
   },
@@ -295,6 +311,7 @@ export const supabaseBackend = {
       .on("postgres_changes", { event: "*", schema: "public", table: "notes" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "checklist_items" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "decorations" }, onChange)
+      .on("postgres_changes", { event: "*", schema: "public", table: "stickers" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "tunnels" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "memberships" }, onChange)
       .subscribe();
