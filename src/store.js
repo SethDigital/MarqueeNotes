@@ -13,7 +13,9 @@
 //         createdAt, deadlineAt,                 // ISO strings; deadlineAt may be null
 //         items: [{ id, text, done, assignee, assignedBy, doneBy }],
 //         pin: null | { to: "team" } | { to: "member", member },
-//         tunnels: [string]                      // names who pinned this to their dashboard
+//         tunnels: [string],                     // names who pinned this to their dashboard
+//         textColor: string | null,              // optional per-note text color (null = smart default)
+//         gradient: null | { stops: [hex,hex,hex], angle: 0-360 } // 3-stop fill override
 //       }],
 //       stickers: [{ id, src }],            // reusable image library for the board
 //       decorations: [{ id, stickerId, x, y, w }]  // placed instances of a sticker
@@ -58,6 +60,10 @@ function migrateNote(n, i) {
     // `tunnels` is the underlying field for the Yoink feature — names who
     // yoinked this note onto their personal board.
     tunnels: Array.isArray(n.tunnels) ? n.tunnels : [],
+    // Per-note text color and an optional 3-stop gradient fill. Both are null
+    // for older notes; null textColor falls back to a contrast-aware default.
+    textColor: typeof n.textColor === "string" ? n.textColor : null,
+    gradient: normalizeGradient(n.gradient),
     items: (n.items || []).map((it) => ({
       assignee: null, assignedBy: null, doneBy: null, doneAt: null, ...it,
     })),
@@ -115,6 +121,115 @@ export function getTheme() {
 export function setTheme(t) {
   localStorage.setItem("marquee-notes-theme", t);
   document.documentElement.dataset.theme = t;
+  // Re-apply UI overrides so they still compose on top of the newly chosen theme.
+  applyUiOverrides(getUiOverrides());
+}
+
+/* -------------------------- interface colors ---------------------------- */
+// Per-browser overrides for the curated set of interface tokens (accent,
+// controls, text, background, panel). Each override is either null (use the
+// theme token), { color: hex } for a solid, or { gradient: {stops, angle} }
+// for a 3-stop fill (background/panel only). Overrides compose on top of
+// whichever board theme is active; clearing one returns it to the theme value.
+const UI_KEY = "marquee-notes-ui-overrides";
+const UI_PRESET_KEY = "marquee-notes-ui-presets";
+
+// The curated override keys and the CSS custom property each one drives. Kept
+// short on purpose — a handful of meaningful knobs rather than every token.
+export const UI_OVERRIDE_KEYS = {
+  accent: "--accent",
+  controls: "--control",
+  text: "--text",
+  background: "--bg",
+  panel: "--panel",
+};
+// Which overrides may be a gradient instead of a solid.
+export const UI_GRADIENT_KEYS = ["background", "panel"];
+
+function sanitizeOverride(value, allowGradient) {
+  if (value == null) return null;
+  if (typeof value === "string") {
+    const c = normalizeHexColor(value);
+    return c ? { color: c } : null;
+  }
+  if (allowGradient && value.gradient) {
+    const g = normalizeGradient(value.gradient);
+    return g ? { gradient: g } : null;
+  }
+  if (value.color) {
+    const c = normalizeHexColor(value.color);
+    return c ? { color: c } : null;
+  }
+  return null;
+}
+
+// Coerce a raw object into a clean overrides map (only known keys, validated).
+export function normalizeUiOverrides(raw) {
+  const out = {};
+  if (!raw || typeof raw !== "object") return out;
+  for (const key of Object.keys(UI_OVERRIDE_KEYS)) {
+    const v = sanitizeOverride(raw[key], UI_GRADIENT_KEYS.includes(key));
+    if (v) out[key] = v;
+  }
+  return out;
+}
+
+export function getUiOverrides() {
+  try {
+    return normalizeUiOverrides(JSON.parse(localStorage.getItem(UI_KEY)));
+  } catch {
+    return {};
+  }
+}
+
+export function saveUiOverrides(overrides) {
+  const clean = normalizeUiOverrides(overrides);
+  localStorage.setItem(UI_KEY, JSON.stringify(clean));
+  applyUiOverrides(clean);
+  return clean;
+}
+
+// Resolve an override to the actual CSS value string for setProperty.
+function overrideCssValue(key, override) {
+  if (override.color) return override.color;
+  if (override.gradient) return gradientCss(override.gradient);
+  return null;
+}
+
+// Write the overrides onto :root as inline custom properties. Keys without an
+// override are cleared so the theme token shows through again.
+export function applyUiOverrides(overrides) {
+  const clean = normalizeUiOverrides(overrides);
+  const root = document.documentElement;
+  for (const [key, token] of Object.entries(UI_OVERRIDE_KEYS)) {
+    const v = clean[key] ? overrideCssValue(key, clean[key]) : null;
+    if (v) root.style.setProperty(token, v);
+    else root.style.removeProperty(token);
+  }
+}
+
+// Named presets — saved combinations loadable from the customize panel.
+export function getUiPresets() {
+  try {
+    const list = JSON.parse(localStorage.getItem(UI_PRESET_KEY));
+    return Array.isArray(list) ? list.filter((p) => p && p.id && p.name) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveUiPreset(name, overrides) {
+  const list = getUiPresets();
+  const preset = { id: uid(), name: name.trim() || "Untitled", overrides: normalizeUiOverrides(overrides) };
+  list.push(preset);
+  localStorage.setItem(UI_PRESET_KEY, JSON.stringify(list));
+  return list;
+}
+
+export function deleteUiPreset(id) {
+  const list = getUiPresets().filter((p) => p.id !== id);
+  localStorage.setItem(UI_PRESET_KEY, JSON.stringify(list));
+  return list;
 }
 
 // "Working as" — a lightweight per-browser name so checked-off steps can say
@@ -203,6 +318,62 @@ export function normalizeHexColor(raw) {
   return six ? v.toLowerCase() : null;
 }
 
+// Validate a gradient shape to exactly three hex stops and an integer angle.
+// Returns a normalized { stops, angle } or null if anything is missing/invalid.
+export function normalizeGradient(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const stops = Array.isArray(raw.stops) ? raw.stops.slice(0, 3).map(normalizeHexColor) : [];
+  if (stops.length !== 3 || stops.some((s) => !s)) return null;
+  let angle = parseInt(raw.angle, 10);
+  if (!Number.isFinite(angle)) angle = 135;
+  angle = ((angle % 360) + 360) % 360;
+  return { stops, angle };
+}
+
+// A CSS gradient string for a validated gradient, or null for a solid color.
+export function gradientCss(g) {
+  const grad = normalizeGradient(g);
+  if (!grad) return null;
+  return `linear-gradient(${grad.angle}deg, ${grad.stops[0]}, ${grad.stops[1]}, ${grad.stops[2]})`;
+}
+
+// Average the three stops of a gradient into one representative hex, so all the
+// existing color-mix borders/glow (which need a solid) keep working when a note
+// wears a gradient. Returns the solid color untouched otherwise.
+export function representativeSolid(color, gradient) {
+  const grad = normalizeGradient(gradient);
+  if (!grad) return color;
+  const avg = grad.stops.reduce(
+    (acc, hex) => { const c = hexToRgbObj(hex); return { r: acc.r + c.r, g: acc.g + c.g, b: acc.b + c.b }; },
+    { r: 0, g: 0, b: 0 }
+  );
+  return rgbToHex(avg.r / 3, avg.g / 3, avg.b / 3);
+}
+
+// Pick a readable text color for a note by luminance. Used as the default when a
+// note has no explicit textColor, so light notes get dark text and vice versa.
+export function smartTextColor(color, gradient) {
+  const solid = representativeSolid(color, gradient);
+  const { r, g, b } = hexToRgbObj(solid);
+  // Rec. 709 relative luminance — above 0.5 we read the fill as light.
+  const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  return lum >= 0.55 ? "#2a2a1f" : "#f5f5ef";
+}
+
+// --- internal rgb helpers for the color math above ---
+function hexToRgbObj(hex) {
+  const v = normalizeHexColor(hex) || "#000000";
+  return {
+    r: parseInt(v.slice(1, 3), 16),
+    g: parseInt(v.slice(3, 5), 16),
+    b: parseInt(v.slice(5, 7), 16),
+  };
+}
+function rgbToHex(r, g, b) {
+  const c = (n) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, "0");
+  return `#${c(r)}${c(g)}${c(b)}`;
+}
+
 export function newNote(index) {
   return {
     id: uid(),
@@ -220,6 +391,8 @@ export function newNote(index) {
     items: [],
     pin: null,
     tunnels: [],
+    textColor: null, // null = use the contrast-aware default for the note's fill
+    gradient: null, // a 3-stop fill override; null = solid color
   };
 }
 

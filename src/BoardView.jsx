@@ -7,6 +7,7 @@ import {
 import { db, usingBackend } from "./db/index.js";
 import WorkingAs from "./WorkingAs.jsx";
 import ThemeSwitcher from "./ThemeSwitcher.jsx";
+import CustomizeButton from "./CustomizeButton.jsx";
 import StickyNote from "./StickyNote.jsx";
 import CompletedNotesModal from "./CompletedNotesModal.jsx";
 import StickersModal from "./StickersModal.jsx";
@@ -156,6 +157,7 @@ export default function BoardView({ team, project, fixedMe, onBack, onOpenMyBoar
           <Bookmark size={16} /> My Board
         </button>
         <ThemeSwitcher />
+        <CustomizeButton />
         <button
           className="btn"
           title="See everything finished on this board"

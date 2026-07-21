@@ -38,6 +38,10 @@ function rowToNote(row, idToName) {
     y: row.y,
     w: row.w ?? 240,
     h: row.h ?? null,
+    // Per-note text color + optional 3-stop gradient. Both null on older rows;
+    // null text_color means "use the contrast-aware default" on the client.
+    textColor: row.text_color || null,
+    gradient: row.gradient || null,
     createdAt: row.created_at,
     deadlineAt: row.deadline_at,
     completedAt: row.completed_at,
@@ -71,7 +75,7 @@ const WORKSPACE_SELECT = `
   boards (
     id, name,
     notes (
-      id, title, color, rot, x, y, w, h, created_at, deadline_at, completed_at, deleted_at, pin, pinned_member,
+      id, title, color, rot, x, y, w, h, created_at, deadline_at, completed_at, deleted_at, pin, pinned_member, text_color, gradient,
       checklist_items ( id, text, done, done_at, position, assignee_id, assigned_by_id, done_by_id ),
       tunnels ( user_id )
     ),
@@ -136,6 +140,8 @@ async function writeNote(teamId, projectId, note) {
     deleted_at: note.deletedAt || null,
     pin: note.pin ? note.pin.to : "none",
     pinned_member: note.pin?.to === "member" ? nameToId.get(note.pin.member) || null : null,
+    text_color: note.textColor || null,
+    gradient: note.gradient || null,
   });
   if (noteErr) throw noteErr;
 

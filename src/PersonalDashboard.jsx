@@ -1,6 +1,6 @@
 import React from "react";
 import { Bookmark, Loader, CheckCircle2, Send } from "lucide-react";
-import { selectDashboard } from "./store.js";
+import { selectDashboard, representativeSolid } from "./store.js";
 import Deadline from "./Deadline.jsx";
 
 // A personal to-do view derived from the team's notes, so nothing a person is
@@ -39,7 +39,7 @@ export default function PersonalDashboard({ team, me, onOpenProject }) {
               <button
                 key={note.id}
                 className="dash-card"
-                style={{ "--note-color": note.color }}
+                style={{ "--note-color": representativeSolid(note.color, note.gradient) }}
                 onClick={() => onOpenProject(project.id)}
               >
                 <div className="dash-card-title">{note.title || "Untitled note"}</div>

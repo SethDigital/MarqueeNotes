@@ -429,10 +429,10 @@ body {
   flex-direction: column;
   padding: 10px 12px 8px;
   border-radius: 3px;
-  background: var(--note-color);
+  background: var(--note-bg, var(--note-color));
   border: 1px solid transparent;
   box-shadow: var(--note-shadow);
-  color: var(--note-text);
+  color: var(--note-text-color, var(--note-text));
   touch-action: none;
 }
 .note.dragging { z-index: 30; box-shadow: 0 12px 26px rgba(0, 0, 0, 0.45); }
@@ -550,13 +550,59 @@ body {
   right: 0;
   z-index: 20;
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 6px;
   background: var(--panel);
   border: 1px solid var(--panel-border);
   border-radius: 8px;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
-  padding: 6px;
+  padding: 8px;
+  min-width: 230px;
+}
+/* Each row pairs a fill or text control: icon, label, native picker, hex input. */
+.color-row { display: flex; align-items: center; gap: 6px; }
+.color-row-icon { color: var(--muted); flex: none; }
+.color-row-label { font-size: 0.72rem; color: var(--muted); width: 28px; flex: none; }
+.color-auto {
+  padding: 3px 7px;
+  border: 1px solid var(--control-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.72rem;
+  cursor: pointer;
+  flex: none;
+}
+.color-auto.on { background: var(--accent); color: var(--accent-text); border-color: var(--accent-border); }
+
+/* 3-stop gradient section: a toggle, then three stop pickers + an angle input. */
+.color-gradient { display: flex; flex-direction: column; gap: 6px; }
+.color-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--control-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.color-toggle.on { background: var(--accent); color: var(--accent-text); border-color: var(--accent-border); }
+.gradient-stops { display: flex; gap: 6px; }
+.gradient-angle { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; color: var(--muted); }
+.gradient-angle label { width: 42px; }
+.gradient-angle input {
+  width: 56px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 0.78rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 .color-native {
   width: 26px;
@@ -1013,3 +1059,63 @@ body {
   font-size: 0.75rem;
 }
 .sticker-add:hover { border-color: var(--accent-border); color: var(--text); }
+
+/* --------------------------- customize panel ---------------------------- */
+/* The "Customize interface" button sits next to the theme switch in the top
+   bar and opens a modal where every curated override is editable live. */
+.customize-btn { display: inline-flex; align-items: center; gap: 5px; }
+
+.customize-hint { margin: 0 0 14px; color: var(--muted); font-size: 0.82rem; line-height: 1.4; }
+.customize-rows { display: flex; flex-direction: column; gap: 12px; }
+.customize-row { display: flex; gap: 12px; align-items: flex-start; padding: 10px; border: 1px solid var(--panel-border); border-radius: 8px; background: var(--input-bg); }
+.customize-preview {
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  border: 1px solid var(--control-border);
+  flex: none;
+  background-size: cover;
+}
+.customize-fields { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+.customize-label { font-weight: 700; font-size: 0.88rem; }
+.customize-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.customize-kind { display: inline-flex; border: 1px solid var(--control-border); border-radius: 6px; overflow: hidden; }
+.customize-tab {
+  padding: 4px 10px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.customize-tab.on { background: var(--accent); color: var(--accent-text); }
+.customize-clear {
+  padding: 4px 8px;
+  border: 1px solid var(--control-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.customize-clear:hover { color: var(--text); }
+.customize-gradient { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.customize-actions { margin-top: 14px; display: flex; gap: 8px; }
+
+.customize-presets { margin-top: 18px; border-top: 1px solid var(--panel-border); padding-top: 14px; }
+.customize-presets h4 { margin: 0 0 10px; font-size: 0.9rem; }
+.customize-save { display: flex; gap: 8px; margin-bottom: 10px; }
+.customize-name {
+  flex: 1;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 0.85rem;
+}
+.customize-empty { color: var(--muted); font-size: 0.82rem; margin: 0; }
+.customize-preset-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.customize-preset-list li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--panel-border); border-radius: 6px; }
+.customize-preset-name { flex: 1; font-size: 0.85rem; }
+

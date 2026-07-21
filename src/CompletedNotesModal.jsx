@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { CheckCircle2, Clock, AlarmClock, ChevronRight, Check } from "lucide-react";
 import Modal from "./Modal.jsx";
 import { formatDelta } from "./Deadline.jsx";
+import { representativeSolid } from "./store.js";
 
 const fmt = (iso) =>
   iso
@@ -27,7 +28,7 @@ function DeadlineSlack({ deadlineIso, completedIso }) {
 function CompletedRow({ note }) {
   const [open, setOpen] = useState(false);
   return (
-    <li className={"completed-row" + (open ? " open" : "")} style={{ "--note-color": note.color }}>
+    <li className={"completed-row" + (open ? " open" : "")} style={{ "--note-color": representativeSolid(note.color, note.gradient) }}>
       <button className="completed-row-head" onClick={() => setOpen((v) => !v)}>
         <ChevronRight size={15} className="completed-chevron" />
         <span className="completed-title">{note.title || "Untitled note"}</span>

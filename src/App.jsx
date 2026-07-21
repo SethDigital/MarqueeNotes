@@ -2,12 +2,13 @@ import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
   Plus, Users, ArrowLeft, Pin, Trash2, X, FolderOpen, Sparkles, LayoutDashboard, Ticket, Bookmark,
 } from "lucide-react";
-import { uid, getMe, setMe, isNoteActive } from "./store.js";
+import { uid, getMe, setMe, isNoteActive, representativeSolid } from "./store.js";
 import { db, usingBackend } from "./db/index.js";
 import AuthGate from "./AuthGate.jsx";
 import BoardView from "./BoardView.jsx";
 import WorkingAs from "./WorkingAs.jsx";
 import ThemeSwitcher from "./ThemeSwitcher.jsx";
+import CustomizeButton from "./CustomizeButton.jsx";
 import PersonalDashboard from "./PersonalDashboard.jsx";
 import PersonalBoard from "./PersonalBoard.jsx";
 import InvitePanel from "./InvitePanel.jsx";
@@ -193,6 +194,7 @@ function HomeScreen({ teams, onAddTeam, onOpenTeam, onJoinTeam, onOpenMyBoard, o
       <header className="topbar">
         <h1><Pin size={22} className="logo-pin" /> MarqueeNotes</h1>
         <ThemeSwitcher />
+        <CustomizeButton />
       </header>
 
       <main className="page">
@@ -376,6 +378,7 @@ function TeamScreen({ team, fixedMe, onBack, onOpenProject, onAddProject, onSetM
           <Bookmark size={16} /> My Board
         </button>
         <ThemeSwitcher />
+        <CustomizeButton />
         <button
           className="btn ghost danger"
           title="Delete this team"
@@ -453,7 +456,7 @@ function TeamScreen({ team, fixedMe, onBack, onOpenProject, onAddProject, onSetM
             {pinned.length === 0 && <p className="hint">Nothing pinned yet. Pin a note from any board to flag it here.</p>}
             <div className="card-grid">
               {pinned.map(({ project, note }) => (
-                <button key={note.id} className="card pinned-card" style={{ "--note-color": note.color }}
+                <button key={note.id} className="card pinned-card" style={{ "--note-color": representativeSolid(note.color, note.gradient) }}
                   onClick={() => onOpenProject(project.id)}>
                   <div className="card-title dark">
                     <Pin size={14} /> {note.title || "Untitled note"}

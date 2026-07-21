@@ -1,12 +1,17 @@
 import React, { useRef, useState, useLayoutEffect } from "react";
 import {
   Pin, PinOff, Trash2, Check, CheckCircle2, GripVertical, Clock, Bookmark, X, Palette, RotateCcw,
+  Type, Layers,
 } from "lucide-react";
-import { newItem, NOTE_COLORS, isNoteComplete, normalizeHexColor } from "./store.js";
+import {
+  newItem, NOTE_COLORS, isNoteComplete, normalizeHexColor,
+  gradientCss, representativeSolid, smartTextColor,
+} from "./store.js";
 import Deadline from "./Deadline.jsx";
 
 const MIN_NOTE_W = 180;
 const MIN_NOTE_H = 150;
+const MAX_TEXT_LENGTH = 160; // hard cap on any single line of text on a note (title or step)
 
 // One sticky note. Two layouts via `variant`:
 //   "board"  — free-drag on the team-board canvas (absolute positioning).
@@ -21,6 +26,7 @@ export default function StickyNote({ note, members, me, onChange, onDelete, vari
   const [pinMenu, setPinMenu] = useState(false);
   const [colorMenu, setColorMenu] = useState(false);
   const [hexDraft, setHexDraft] = useState(note.color);
+  const [textHexDraft, setTextHexDraft] = useState("");
   const [dateOpen, setDateOpen] = useState(false);
   const [newText, setNewText] = useState("");
 
@@ -110,6 +116,7 @@ export default function StickyNote({ note, members, me, onChange, onDelete, vari
   };
   const openColorMenu = () => {
     setHexDraft(note.color);
+    setTextHexDraft(note.textColor || "");
     setColorMenu(true);
   };
   // Commit the typed hex on blur/Enter; an incomplete or invalid value just
@@ -118,6 +125,49 @@ export default function StickyNote({ note, members, me, onChange, onDelete, vari
     const normalized = normalizeHexColor(hexDraft);
     if (normalized) setColor(normalized);
     else setHexDraft(note.color);
+  };
+
+  // --- per-note text color ---
+  const setTextColor = (hex) => {
+    const c = normalizeHexColor(hex);
+    if (c) {
+      onChange((n) => ({ ...n, textColor: c }));
+      setTextHexDraft(c);
+    }
+  };
+  const commitTextHexDraft = () => {
+    if (!textHexDraft) return; // empty allowed while typing; leave as-is
+    const normalized = normalizeHexColor(textHexDraft);
+    if (normalized) setTextColor(normalized);
+    else setTextHexDraft(note.textColor || "");
+  };
+  const resetTextColor = () => {
+    onChange((n) => ({ ...n, textColor: null }));
+    setTextHexDraft("");
+  };
+
+  // --- 3-stop gradient fill ---
+  const startGradient = () => {
+    // Seed the three stops from the note's current solid color so it starts
+    // looking like the same note rather than a surprise rainbow.
+    const base = note.gradient || { stops: [note.color, note.color, note.color], angle: 135 };
+    onChange((n) => ({ ...n, gradient: { ...base } }));
+  };
+  const setGradientStop = (i, hex) => {
+    const c = normalizeHexColor(hex);
+    if (!c || !note.gradient) return;
+    const stops = [...note.gradient.stops];
+    stops[i] = c;
+    onChange((n) => ({ ...n, gradient: { ...n.gradient, stops } }));
+  };
+  const setGradientAngle = (deg) => {
+    const angle = parseInt(deg, 10);
+    if (!Number.isFinite(angle)) return;
+    const clamped = ((angle % 360) + 360) % 360;
+    onChange((n) => ({ ...n, gradient: { ...n.gradient, angle: clamped } }));
+  };
+  const clearGradient = () => {
+    onChange((n) => ({ ...n, gradient: null }));
   };
 
   // Drag the corner handle to rotate around the note's center. Delta-based, so
@@ -194,14 +244,24 @@ export default function StickyNote({ note, members, me, onChange, onDelete, vari
   const pos = live || note;
   const size = liveSize || note;
   const rot = liveRot ?? note.rot;
+  // --note-color is a representative solid for borders/glow (so existing
+  // color-mix usages keep working); --note-bg is the actual fill, which may be
+  // a 3-stop gradient; --note-text-color is the effective text color (an
+  // explicit per-note choice, or a contrast-aware default for the fill).
+  const solid = representativeSolid(note.color, note.gradient);
+  const noteVars = {
+    "--note-color": solid,
+    "--note-bg": note.gradient ? gradientCss(note.gradient) : note.color,
+    "--note-text-color": note.textColor || smartTextColor(note.color, note.gradient),
+  };
   const style = isStatic
-    ? { "--note-color": note.color }
+    ? noteVars
     : {
         left: pos.x,
         top: pos.y,
         width: size.w || 240,
         ...(size.h ? { height: size.h } : {}),
-        "--note-color": note.color,
+        ...noteVars,
         transform: `rotate(${rot}deg)`,
       };
 
@@ -281,26 +341,97 @@ export default function StickyNote({ note, members, me, onChange, onDelete, vari
           </button>
           {colorMenu && (
             <div className="color-menu">
-              <input
-                type="color"
-                className="color-native"
-                value={note.color}
-                title="Pick a color"
-                onChange={(e) => setColor(e.target.value)}
-              />
-              <input
-                className="color-hex-input"
-                value={hexDraft}
-                placeholder="#RRGGBB"
-                spellCheck={false}
-                autoCapitalize="off"
-                autoComplete="off"
-                onChange={(e) => setHexDraft(e.target.value)}
-                onBlur={commitHexDraft}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") { e.preventDefault(); commitHexDraft(); }
-                }}
-              />
+              <div className="color-row">
+                <Type size={12} className="color-row-icon" />
+                <span className="color-row-label">Fill</span>
+                <input
+                  type="color"
+                  className="color-native"
+                  value={note.color}
+                  title="Pick a fill color"
+                  onChange={(e) => setColor(e.target.value)}
+                />
+                <input
+                  className="color-hex-input"
+                  value={hexDraft}
+                  placeholder="#RRGGBB"
+                  spellCheck={false}
+                  autoCapitalize="off"
+                  autoComplete="off"
+                  onChange={(e) => setHexDraft(e.target.value)}
+                  onBlur={commitHexDraft}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") { e.preventDefault(); commitHexDraft(); }
+                  }}
+                />
+              </div>
+              <div className="color-row">
+                <Type size={12} className="color-row-icon" />
+                <span className="color-row-label">Text</span>
+                <input
+                  type="color"
+                  className="color-native"
+                  value={note.textColor || smartTextColor(note.color, note.gradient)}
+                  title="Pick a text color"
+                  onChange={(e) => setTextColor(e.target.value)}
+                />
+                <input
+                  className="color-hex-input"
+                  value={textHexDraft}
+                  placeholder="Auto"
+                  spellCheck={false}
+                  autoCapitalize="off"
+                  autoComplete="off"
+                  onChange={(e) => setTextHexDraft(e.target.value)}
+                  onBlur={commitTextHexDraft}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") { e.preventDefault(); commitTextHexDraft(); }
+                  }}
+                />
+                <button
+                  className={"color-auto" + (note.textColor ? "" : " on")}
+                  title="Use the auto contrast color"
+                  onClick={resetTextColor}
+                >
+                  Auto
+                </button>
+              </div>
+              <div className="color-gradient">
+                <button
+                  className={"color-toggle" + (note.gradient ? " on" : "")}
+                  title="Use a 3-stop gradient fill"
+                  onClick={() => (note.gradient ? clearGradient() : startGradient())}
+                >
+                  <Layers size={12} /> 3-stop gradient
+                </button>
+                {note.gradient && (
+                  <>
+                    <div className="gradient-stops">
+                      {note.gradient.stops.map((stop, i) => (
+                        <input
+                          key={i}
+                          type="color"
+                          className="color-native"
+                          value={stop}
+                          title={`Stop ${i + 1}`}
+                          onChange={(e) => setGradientStop(i, e.target.value)}
+                        />
+                      ))}
+                    </div>
+                    <div className="gradient-angle">
+                      <label>Angle</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="359"
+                        value={note.gradient.angle}
+                        onChange={(e) => setGradientAngle(e.target.value)}
+                      />
+                      <span>°</span>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -316,6 +447,7 @@ export default function StickyNote({ note, members, me, onChange, onDelete, vari
         ref={titleRef}
         className="note-title"
         rows={1}
+        maxLength={MAX_TEXT_LENGTH}
         value={note.title}
         placeholder="Note title…"
         onChange={(e) => onChange((n) => ({ ...n, title: e.target.value }))}
@@ -370,6 +502,7 @@ export default function StickyNote({ note, members, me, onChange, onDelete, vari
       <div className="note-add">
         <input
           value={newText}
+          maxLength={MAX_TEXT_LENGTH}
           placeholder="Add a step…"
           onChange={(e) => setNewText(e.target.value)}
           onKeyDown={(e) => {
