@@ -1,9 +1,12 @@
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useLayoutEffect } from "react";
 import {
-  Pin, PinOff, Trash2, Check, CheckCircle2, GripVertical, Clock, Bookmark, X, Palette,
+  Pin, PinOff, Trash2, Check, CheckCircle2, GripVertical, Clock, Bookmark, X, Palette, RotateCcw,
 } from "lucide-react";
 import { newItem, NOTE_COLORS, isNoteComplete, normalizeHexColor } from "./store.js";
 import Deadline from "./Deadline.jsx";
+
+const MIN_NOTE_W = 180;
+const MIN_NOTE_H = 150;
 
 // One sticky note. Two layouts via `variant`:
 //   "board"  — free-drag on the team-board canvas (absolute positioning).
@@ -11,7 +14,10 @@ import Deadline from "./Deadline.jsx";
 //              same note object, so they land on the original team-board note.
 export default function StickyNote({ note, members, me, onChange, onDelete, variant = "board" }) {
   const rootRef = useRef(null);
+  const titleRef = useRef(null);
   const [live, setLive] = useState(null);      // transient position while dragging
+  const [liveRot, setLiveRot] = useState(null);   // transient angle while rotating
+  const [liveSize, setLiveSize] = useState(null); // transient {w,h} while resizing
   const [pinMenu, setPinMenu] = useState(false);
   const [colorMenu, setColorMenu] = useState(false);
   const [hexDraft, setHexDraft] = useState(note.color);
@@ -114,15 +120,101 @@ export default function StickyNote({ note, members, me, onChange, onDelete, vari
     else setHexDraft(note.color);
   };
 
+  // Drag the corner handle to rotate around the note's center. Delta-based, so
+  // it works from any handle position and regardless of the starting angle.
+  const startRotate = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = rootRef.current.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const a0 = Math.atan2(e.clientY - cy, e.clientX - cx);
+    const rot0 = note.rot || 0;
+    let latest = rot0;
+    const move = (ev) => {
+      const a = Math.atan2(ev.clientY - cy, ev.clientX - cx);
+      latest = Math.round(rot0 + ((a - a0) * 180) / Math.PI);
+      setLiveRot(latest);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      setLiveRot(null);
+      onChange((n) => ({ ...n, rot: latest }));
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
+  const resetRotation = () => onChange((n) => ({ ...n, rot: 0 }));
+
+  // Drag the bottom-right handle to resize. The pointer delta is rotated back
+  // into the note's own axes so "wider/taller" tracks the note even when it's
+  // been turned. First drag starts from the note's current rendered height so
+  // an auto-height note doesn't jump.
+  const startResize = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startW = note.w || rootRef.current.offsetWidth || 240;
+    const startH = note.h || rootRef.current.offsetHeight || 200;
+    const rad = -(note.rot || 0) * (Math.PI / 180);
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    let latest = { w: startW, h: startH };
+    const move = (ev) => {
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+      latest = {
+        w: Math.max(MIN_NOTE_W, Math.round(startW + dx * cos - dy * sin)),
+        h: Math.max(MIN_NOTE_H, Math.round(startH + dx * sin + dy * cos)),
+      };
+      setLiveSize({ ...latest });
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      setLiveSize(null);
+      onChange((n) => ({ ...n, w: latest.w, h: latest.h }));
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
+  // Keep the title textarea sized to its wrapped content (it wraps instead of
+  // scrolling sideways). Re-runs when the text or the note's width changes.
+  useLayoutEffect(() => {
+    const el = titleRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = el.scrollHeight + "px";
+  }, [note.title, note.w, liveSize]);
+
   const pos = live || note;
+  const size = liveSize || note;
+  const rot = liveRot ?? note.rot;
   const style = isStatic
     ? { "--note-color": note.color }
-    : { left: pos.x, top: pos.y, "--note-color": note.color, transform: `rotate(${note.rot}deg)` };
+    : {
+        left: pos.x,
+        top: pos.y,
+        width: size.w || 240,
+        ...(size.h ? { height: size.h } : {}),
+        "--note-color": note.color,
+        transform: `rotate(${rot}deg)`,
+      };
 
   return (
     <div
       ref={rootRef}
-      className={"note" + (isStatic ? " static" : "") + (live ? " dragging" : "") + (completed ? " completed" : "")}
+      className={
+        "note" +
+        (isStatic ? " static" : "") +
+        (live ? " dragging" : "") +
+        (liveSize || liveRot != null ? " transforming" : "") +
+        (completed ? " completed" : "")
+      }
       style={style}
       onPointerDown={isStatic ? undefined : startDrag}
     >
@@ -219,8 +311,11 @@ export default function StickyNote({ note, members, me, onChange, onDelete, vari
         )}
       </div>
 
-      <input
+      <div className="note-scroll">
+      <textarea
+        ref={titleRef}
         className="note-title"
+        rows={1}
         value={note.title}
         placeholder="Note title…"
         onChange={(e) => onChange((n) => ({ ...n, title: e.target.value }))}
@@ -285,6 +380,7 @@ export default function StickyNote({ note, members, me, onChange, onDelete, vari
           }}
         />
       </div>
+      </div>
 
       <div className="note-footer">
         <div className="note-actions">
@@ -315,6 +411,11 @@ export default function StickyNote({ note, members, me, onChange, onDelete, vari
           >
             <CheckCircle2 size={15} />
           </button>
+          {!isStatic && Math.round(note.rot) !== 0 && (
+            <button className="icon-btn" title="Straighten (reset rotation)" onClick={resetRotation}>
+              <RotateCcw size={15} />
+            </button>
+          )}
         </div>
         {note.items.length > 0 && <span className="note-progress">{doneCount}/{note.items.length} done</span>}
       </div>
@@ -332,6 +433,13 @@ export default function StickyNote({ note, members, me, onChange, onDelete, vari
             </button>
           )}
         </div>
+      )}
+
+      {!isStatic && (
+        <>
+          <div className="note-rotate" title="Drag to rotate" onPointerDown={startRotate} />
+          <div className="note-resize" title="Drag to resize" onPointerDown={startResize} />
+        </>
       )}
     </div>
   );

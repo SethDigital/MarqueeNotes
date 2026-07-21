@@ -9,6 +9,7 @@
 //       id, name,
 //       notes: [{
 //         id, title, color, rot, x, y,          // x/y drive free-drag positioning
+//         w, h,                                  // px size; h null = auto-height (grows with content)
 //         createdAt, deadlineAt,                 // ISO strings; deadlineAt may be null
 //         items: [{ id, text, done, assignee, assignedBy, doneBy }],
 //         pin: null | { to: "team" } | { to: "member", member },
@@ -48,6 +49,8 @@ function migrateNote(n, i) {
     ...n,
     x: typeof n.x === "number" ? n.x : 28 + (i % 4) * 260,
     y: typeof n.y === "number" ? n.y : 28 + Math.floor(i / 4) * 250,
+    w: typeof n.w === "number" ? n.w : 240,
+    h: typeof n.h === "number" ? n.h : null, // null = auto height until resized
     createdAt: n.createdAt || new Date().toISOString(),
     deadlineAt: n.deadlineAt || null,
     completedAt: n.completedAt || null,
@@ -208,6 +211,8 @@ export function newNote(index) {
     rot: Math.round((Math.random() * 3 - 1.5) * 10) / 10,
     x: 28 + (index % 4) * 260,
     y: 28 + Math.floor(index / 4) * 250,
+    w: 240,
+    h: null,
     createdAt: new Date().toISOString(),
     deadlineAt: null,
     completedAt: null,
@@ -285,7 +290,7 @@ const daysFromNow = (d) => new Date(Date.now() + d * 86400000).toISOString();
 export function demoData() {
   // Item tuple: [text, done, assignee?, assignedBy?, doneBy?, doneAtDays?]
   const note = (title, color, x, y, deadlineAt, items, extra = {}) => ({
-    id: uid(), title, color, x, y,
+    id: uid(), title, color, x, y, w: 240, h: null,
     rot: Math.round((Math.random() * 3 - 1.5) * 10) / 10,
     createdAt: daysFromNow(-3),
     deadlineAt,
