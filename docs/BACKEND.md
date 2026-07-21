@@ -35,6 +35,35 @@ implementations behind one interface:
 Flipping between them is nothing more than setting (or unsetting) the two env
 vars — no code change.
 
+## Deploying a schema change
+
+GitHub Pages deploys the moment `main` gets a push (see
+[`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml)) — there's no
+step in between that applies pending Supabase migrations. If a change adds a
+new migration file, **the live database only catches up once someone runs it
+by hand** in the Supabase SQL Editor or via `supabase db push`.
+
+That gap matters because `loadWorkspace()` in `src/db/supabase.js` selects
+every column the current code knows about. The moment code referencing a new
+column/table ships, signed-in users on the live site get a hard query error
+(`column ... does not exist` / `table ... not found`) until that migration is
+applied — the app doesn't degrade gracefully, it just fails to load.
+
+**So: before pushing a commit that includes a new file in
+`supabase/migrations/`, apply it to the live project first** (or immediately
+after, accepting a short window where signed-in users are broken). Check
+migration state without touching anything by querying a column/table the new
+migration adds, e.g.:
+
+```bash
+curl -s "https://<ref>.supabase.co/rest/v1/notes?select=w&limit=1" -H "apikey: <anon key>"
+# {"code":"42703", ...}  → migration NOT applied yet
+# []  or real rows        → applied
+```
+
+Current migrations, in order: `0001_init` → `0002_invites` → `0003_completion`
+→ `0004_soft_delete` → `0005_stickers` → `0006_note_size`.
+
 ## Schema at a glance
 
 ```
