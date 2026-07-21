@@ -100,7 +100,6 @@ function ColorRow({ label, draft, allowGradient, onChange, onClear }) {
 // background/panel, a 3-stop gradient) plus named presets you can save and load.
 // Changes apply live on top of the active board theme and persist per-browser.
 export default function CustomizePanel({ onClose }) {
-  const initial = getUiOverrides();
   // Seed drafts from current overrides; "none" rows fall back to a neutral grey.
   const buildDrafts = (overrides) => {
     const drafts = {};
@@ -109,7 +108,11 @@ export default function CustomizePanel({ onClose }) {
     }
     return drafts;
   };
-  const [drafts, setDrafts] = useState(buildDrafts);
+  // Lazy-initialize so buildDrafts is called exactly once with the real
+  // overrides. Passing buildDrafts bare to useState made React treat it as a
+  // lazy initializer and call it with no arg — overrides[key] then threw and,
+  // with no error boundary, blanked the whole app.
+  const [drafts, setDrafts] = useState(() => buildDrafts(getUiOverrides()));
   const [presets, setPresets] = useState(getUiPresets);
   const [presetName, setPresetName] = useState("");
 

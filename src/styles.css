@@ -1065,6 +1065,10 @@ body {
    bar and opens a modal where every curated override is editable live. */
 .customize-btn { display: inline-flex; align-items: center; gap: 5px; }
 
+/* Inline notice shown by ErrorBoundary when a subtree fails to render — kept
+   plain so it never itself depends on whatever broke. */
+.boundary-fallback { padding: 10px 14px; color: var(--muted); font-size: 0.85rem; }
+
 .customize-hint { margin: 0 0 14px; color: var(--muted); font-size: 0.82rem; line-height: 1.4; }
 .customize-rows { display: flex; flex-direction: column; gap: 12px; }
 .customize-row { display: flex; gap: 12px; align-items: flex-start; padding: 10px; border: 1px solid var(--panel-border); border-radius: 8px; background: var(--input-bg); }
