@@ -395,6 +395,9 @@ body {
   user-select: none;
 }
 .decoration.active { cursor: grabbing; }
+/* Lift a sticker being rotated/resized above its siblings so the handle tracks
+   the pointer unobstructed (inline zIndex is the source of truth otherwise). */
+.decoration.transforming { z-index: 30 !important; }
 .decoration img { display: block; width: 100%; height: auto; pointer-events: none; }
 .decor-delete {
   position: absolute;
@@ -419,6 +422,64 @@ body {
   visibility: hidden;
 }
 .decoration:hover .decor-resize { visibility: visible; }
+
+/* Rotation handle (top-left, matches the note's) + a "straighten" button that
+   only appears once the sticker is actually rotated. */
+.decor-rotate {
+  position: absolute;
+  left: -7px;
+  top: -7px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  cursor: grab;
+  visibility: hidden;
+}
+.decoration:hover .decor-rotate,
+.decoration.transforming .decor-rotate { visibility: visible; }
+.decoration.transforming .decor-rotate { cursor: grabbing; }
+.decor-straighten {
+  position: absolute;
+  left: -8px;
+  top: 14px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  visibility: hidden;
+}
+.decoration:hover .decor-straighten { visibility: visible; }
+
+/* Layer up/down + save-to-stash, stacked on the right edge of the sticker.
+   Revealed on hover so the board stays clean while decorating. */
+.decor-side {
+  position: absolute;
+  top: 50%;
+  right: -8px;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  z-index: 2;
+  visibility: hidden;
+}
+.decoration:hover .decor-side { visibility: visible; }
+.decor-side .icon-btn {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+.decor-side .icon-btn:hover { background: var(--accent, var(--panel)); color: #fff; }
+.decor-layer { cursor: pointer; }
+.decor-save { cursor: pointer; }
 
 /* ------------------------------ sticky note ---------------------------- */
 .note {
@@ -472,6 +533,34 @@ body {
   border-bottom: 2.5px solid var(--note-dim);
   border-bottom-right-radius: 5px;
 }
+
+/* Layer up/down, stacked on the note's right edge — same reveal-on-hover as
+   the rotate/resize handles, and hidden on static (My Board) notes. */
+.note-side {
+  position: absolute;
+  top: 50%;
+  right: -12px;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  z-index: 4;
+  visibility: hidden;
+}
+.note:hover .note-side { visibility: visible; }
+.note-layer {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--note-color);
+  border: 1px solid var(--note-dim);
+  color: var(--note-text);
+  cursor: pointer;
+}
+.note-layer:hover { background: var(--note-dim); color: var(--note-color); }
 
 /* Neon notes: dark body, the note's color becomes its glow. These rules live
    at element scope because --note-color is set per-note (inline style). */

@@ -7,7 +7,11 @@
 // backend write to normalized tables without one client clobbering another's
 // rows — see ./supabase.js.
 
-import { load, save, demoData, uid, genInviteCode, normalizeInviteCode, INVITE_TTL_MS } from "../store.js";
+import {
+  load, save, demoData, uid, genInviteCode, normalizeInviteCode, INVITE_TTL_MS,
+  getStash, addToStash as stashAdd, removeFromStash as stashRemove,
+  migrateProjectAssets, migrateProjectZ,
+} from "../store.js";
 
 const findTeam = (d, teamId) => d.teams.find((t) => t.id === teamId);
 const findProject = (d, teamId, projectId) =>
@@ -24,13 +28,22 @@ export const localBackend = {
   usesAuth: false,
 
   async loadWorkspace() {
-    return load();
+    const data = load();
+    return { ...data, stash: getStash() };
   },
 
   async seedDemo() {
     const data = demoData();
+    // Run the same on-load migration so freshly seeded boards get proper z
+    // values (the seed doesn't set them) and an older decoration shape, if
+    // any, is normalized.
+    for (const t of data.teams)
+      for (const p of t.projects) {
+        migrateProjectAssets(p);
+        migrateProjectZ(p);
+      }
     save(data);
-    return data;
+    return { ...data, stash: getStash() };
   },
 
   /* ------------------------------- teams ------------------------------- */
@@ -147,6 +160,12 @@ export const localBackend = {
       if (p) p.decorations = p.decorations.filter((x) => x.id !== decorationId);
     });
   },
+
+  /* -------------------------------- stash ------------------------------- */
+  // The personal sticker library lives outside the team tree (per-browser in
+  // the demo). These just delegate to the store helpers.
+  async addToStash(src) { return stashAdd(src); },
+  async removeFromStash(stashId) { return stashRemove(stashId); },
 
   /* ------------------------------ realtime ----------------------------- */
   // No peers in a single browser; nothing to subscribe to.

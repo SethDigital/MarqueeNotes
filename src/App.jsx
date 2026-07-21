@@ -131,6 +131,24 @@ function Workspace({ user }) {
   // its Back button returns them there, not to the teams list.
   const openMyBoard = () => setView({ screen: "myboard", from: view });
 
+  /* --------------------- personal sticker stash -------------------- */
+  // The stash is per-account and cross-board, so it's owned here at the
+  // Workspace level (not inside any one board). Optimistic update + persist,
+  // same pattern as everything else.
+  const addToStash = (src) => {
+    setData((d) => {
+      const list = d.stash || [];
+      if (list.some((s) => s.src === src)) return d; // dedupe by src
+      const entry = { id: uid(), src };
+      db.addToStash(src);
+      return { ...d, stash: [...list, entry] };
+    });
+  };
+  const removeFromStash = (stashId) => {
+    setData((d) => ({ ...d, stash: (d.stash || []).filter((s) => s.id !== stashId) }));
+    db.removeFromStash(stashId);
+  };
+
   if (view.screen === "myboard") {
     return (
       <PersonalBoard
@@ -148,6 +166,9 @@ function Workspace({ user }) {
         team={team}
         project={project}
         fixedMe={fixedMe}
+        stash={data.stash || []}
+        onAddToStash={addToStash}
+        onRemoveFromStash={removeFromStash}
         onBack={() => setView({ screen: "team", teamId: team.id })}
         onOpenMyBoard={openMyBoard}
         onPatchProject={(fn) => patchProject(team.id, project.id, fn)}
