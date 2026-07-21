@@ -163,6 +163,22 @@ export function formatTimeLeft(expiresAt) {
 
 export const NOTE_COLORS = ["#fef08a", "#fbcfe8", "#bae6fd", "#bbf7d0", "#fed7aa", "#ddd6fe"];
 
+// Validate/normalize a typed-or-pasted hex color to a full 6-digit form (adds
+// the leading #, expands 3-digit shorthand). Returns null if it's not a valid
+// hex color, so callers can leave a draft in progress instead of clobbering it.
+export function normalizeHexColor(raw) {
+  let v = (raw || "").trim();
+  if (!v) return null;
+  if (v[0] !== "#") v = "#" + v;
+  const three = /^#([0-9a-fA-F]{3})$/.exec(v);
+  if (three) {
+    const [r, g, b] = three[1].split("");
+    return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
+  }
+  const six = /^#[0-9a-fA-F]{6}$/.exec(v);
+  return six ? v.toLowerCase() : null;
+}
+
 export function newNote(index) {
   return {
     id: uid(),

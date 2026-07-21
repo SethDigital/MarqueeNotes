@@ -1,8 +1,8 @@
 import React, { useRef, useState } from "react";
 import {
-  Pin, PinOff, Trash2, Check, CheckCircle2, GripVertical, Clock, Bookmark, X,
+  Pin, PinOff, Trash2, Check, CheckCircle2, GripVertical, Clock, Bookmark, X, Palette,
 } from "lucide-react";
-import { newItem, NOTE_COLORS, isNoteComplete } from "./store.js";
+import { newItem, NOTE_COLORS, isNoteComplete, normalizeHexColor } from "./store.js";
 import Deadline from "./Deadline.jsx";
 
 // One sticky note. Two layouts via `variant`:
@@ -13,6 +13,8 @@ export default function StickyNote({ note, members, me, onChange, onDelete, vari
   const rootRef = useRef(null);
   const [live, setLive] = useState(null);      // transient position while dragging
   const [pinMenu, setPinMenu] = useState(false);
+  const [colorMenu, setColorMenu] = useState(false);
+  const [hexDraft, setHexDraft] = useState(note.color);
   const [dateOpen, setDateOpen] = useState(false);
   const [newText, setNewText] = useState("");
 
@@ -96,6 +98,22 @@ export default function StickyNote({ note, members, me, onChange, onDelete, vari
   const setDeadline = (value) =>
     onChange((n) => ({ ...n, deadlineAt: value ? new Date(value + "T23:59:59").toISOString() : null }));
 
+  const setColor = (hex) => {
+    onChange((n) => ({ ...n, color: hex }));
+    setHexDraft(hex);
+  };
+  const openColorMenu = () => {
+    setHexDraft(note.color);
+    setColorMenu(true);
+  };
+  // Commit the typed hex on blur/Enter; an incomplete or invalid value just
+  // reverts to the note's current color rather than erroring loudly.
+  const commitHexDraft = () => {
+    const normalized = normalizeHexColor(hexDraft);
+    if (normalized) setColor(normalized);
+    else setHexDraft(note.color);
+  };
+
   const pos = live || note;
   const style = isStatic
     ? { "--note-color": note.color }
@@ -157,9 +175,42 @@ export default function StickyNote({ note, members, me, onChange, onDelete, vari
               className={"swatch" + (c === note.color ? " current" : "")}
               style={{ background: c }}
               title="Note color"
-              onClick={() => onChange((n) => ({ ...n, color: c }))}
+              onClick={() => setColor(c)}
             />
           ))}
+        </div>
+        <div className="color-wrap">
+          <button
+            className="icon-btn"
+            title="Custom color"
+            onClick={() => (colorMenu ? setColorMenu(false) : openColorMenu())}
+          >
+            <Palette size={14} />
+          </button>
+          {colorMenu && (
+            <div className="color-menu">
+              <input
+                type="color"
+                className="color-native"
+                value={note.color}
+                title="Pick a color"
+                onChange={(e) => setColor(e.target.value)}
+              />
+              <input
+                className="color-hex-input"
+                value={hexDraft}
+                placeholder="#RRGGBB"
+                spellCheck={false}
+                autoCapitalize="off"
+                autoComplete="off"
+                onChange={(e) => setHexDraft(e.target.value)}
+                onBlur={commitHexDraft}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") { e.preventDefault(); commitHexDraft(); }
+                }}
+              />
+            </div>
+          )}
         </div>
         {!isStatic && (
           <button className="icon-btn" title="Take this note down (kept in Completed)" onClick={onDelete}>
