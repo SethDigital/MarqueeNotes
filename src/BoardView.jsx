@@ -1,8 +1,12 @@
 import React, { useRef, useState, useEffect } from "react";
-import { Plus, ArrowLeft, X, LayoutGrid, Layers, Bookmark, Sticker as StickerIcon } from "lucide-react";
+import {
+  Plus, ArrowLeft, X, LayoutGrid, Layers, Bookmark, Sticker as StickerIcon,
+  ChevronUp, ChevronDown, Bookmark as BookmarkIcon, RotateCcw,
+} from "lucide-react";
 import {
   newNote, getMe, setMe, tidyPositions, isNoteComplete, isNoteActive,
   fileToDataURL, newDecoration, newSticker, MAX_STICKER_BYTES,
+  nextZ, bringForward, sendBackward,
 } from "./store.js";
 import { db, usingBackend } from "./db/index.js";
 import WorkingAs from "./WorkingAs.jsx";
@@ -12,7 +16,7 @@ import StickyNote from "./StickyNote.jsx";
 import CompletedNotesModal from "./CompletedNotesModal.jsx";
 import StickersModal from "./StickersModal.jsx";
 
-export default function BoardView({ team, project, fixedMe, onBack, onOpenMyBoard, onPatchProject }) {
+export default function BoardView({ team, project, fixedMe, onBack, onOpenMyBoard, onPatchProject, stash, onAddToStash, onRemoveFromStash }) {
   const canvasRef = useRef(null);
   const [localMe, setLocalMe] = useState(() => getMe(team.id));
   const me = fixedMe || localMe;
@@ -63,7 +67,7 @@ export default function BoardView({ team, project, fixedMe, onBack, onOpenMyBoar
   };
 
   const addNote = () => {
-    const note = newNote(project.notes.length);
+    const note = { ...newNote(project.notes.length), z: nextZ(project) };
     onPatchProject((p) => ({ ...p, notes: [...p.notes, note] }));
     db.createNote(team.id, project.id, note);
   };
@@ -118,9 +122,22 @@ export default function BoardView({ team, project, fixedMe, onBack, onOpenMyBoar
   };
 
   const placeSticker = (stickerId) => {
-    const deco = newDecoration(stickerId, project.decorations.length);
+    const deco = { ...newDecoration(stickerId, project.decorations.length), z: nextZ(project) };
     onPatchProject((p) => ({ ...p, decorations: [...p.decorations, deco] }));
     db.createDecoration(team.id, project.id, deco);
+  };
+
+  // Place a sticker from the personal stash onto this board. The stash image
+  // isn't in this board's library yet, so add it first (deduped by src), then
+  // drop a decoration that references the new library entry.
+  const placeFromStash = (src) => {
+    let sticker = project.stickers.find((s) => s.src === src);
+    if (!sticker) {
+      sticker = newSticker(src);
+      onPatchProject((p) => ({ ...p, stickers: [...p.stickers, sticker] }));
+      db.createSticker(team.id, project.id, sticker);
+    }
+    placeSticker(sticker.id);
   };
 
   // Removing a sticker from the library takes every placement of it down too
@@ -146,6 +163,49 @@ export default function BoardView({ team, project, fixedMe, onBack, onOpenMyBoar
     onPatchProject((p) => ({ ...p, decorations: p.decorations.filter((d) => d.id !== decorId) }));
     db.deleteDecoration(team.id, project.id, decorId);
   };
+
+  /* ----------------------------- layering ------------------------------- */
+  // Notes and decorations share one z stack. A one-step move swaps z with the
+  // nearest neighbor, so both items get updated — here we apply both sides to
+  // the tree and persist each through its own repo method.
+  const combinedLayers = () => [
+    ...project.decorations.map((d) => ({ id: d.id, z: d.z, kind: "decor" })),
+    ...project.notes.map((n) => ({ id: n.id, z: n.z, kind: "note" })),
+  ];
+  const applyLayerSwap = (changes) => {
+    if (!changes.size) return;
+    const updatedNotes = {}, updatedDecors = {};
+    for (const [id, z] of changes) {
+      const item = combinedLayers().find((x) => x.id === id);
+      if (!item) continue;
+      (item.kind === "note" ? updatedNotes : updatedDecors)[id] = z;
+    }
+    if (Object.keys(updatedNotes).length) {
+      onPatchProject((p) => ({
+        ...p,
+        notes: p.notes.map((n) => (n.id in updatedNotes ? { ...n, z: updatedNotes[n.id] } : n)),
+      }));
+      for (const [id, z] of Object.entries(updatedNotes)) {
+        const n = project.notes.find((x) => x.id === id);
+        if (n) db.updateNote(team.id, project.id, { ...n, z });
+      }
+    }
+    if (Object.keys(updatedDecors).length) {
+      onPatchProject((p) => ({
+        ...p,
+        decorations: p.decorations.map((d) => (d.id in updatedDecors ? { ...d, z: updatedDecors[d.id] } : d)),
+      }));
+      for (const [id, z] of Object.entries(updatedDecors)) {
+        const d = project.decorations.find((x) => x.id === id);
+        if (d) db.updateDecoration(team.id, project.id, { ...d, z });
+      }
+    }
+  };
+  const bringForwardItem = (id) => applyLayerSwap(bringForward(combinedLayers(), id));
+  const sendBackwardItem = (id) => applyLayerSwap(sendBackward(combinedLayers(), id));
+
+  // Save a placed sticker's image to the personal stash (deduped by src).
+  const saveToStash = (src) => { if (src && onAddToStash) onAddToStash(src); };
 
   return (
     <div className="screen">
@@ -185,6 +245,9 @@ export default function BoardView({ team, project, fixedMe, onBack, onOpenMyBoar
               src={stickerSrc.get(d.stickerId)}
               onChange={(fn) => updateDecoration(d.id, fn)}
               onDelete={() => deleteDecoration(d.id)}
+              onBringForward={() => bringForwardItem(d.id)}
+              onSendBackward={() => sendBackwardItem(d.id)}
+              onSaveToStash={() => saveToStash(stickerSrc.get(d.stickerId))}
             />
           ))}
 
@@ -200,6 +263,8 @@ export default function BoardView({ team, project, fixedMe, onBack, onOpenMyBoar
               me={me}
               onChange={(fn) => updateNote(note.id, fn)}
               onDelete={() => deleteNote(note.id)}
+              onBringForward={() => bringForwardItem(note.id)}
+              onSendBackward={() => sendBackwardItem(note.id)}
             />
           ))}
         </div>
@@ -216,9 +281,12 @@ export default function BoardView({ team, project, fixedMe, onBack, onOpenMyBoar
       {stickersOpen && (
         <StickersModal
           stickers={project.stickers}
+          stash={stash || []}
           onUpload={uploadSticker}
           onPlace={placeSticker}
           onDelete={removeSticker}
+          onPlaceFromStash={placeFromStash}
+          onRemoveFromStash={(stashId) => onRemoveFromStash?.(stashId)}
           onClose={() => setStickersOpen(false)}
         />
       )}
@@ -227,11 +295,13 @@ export default function BoardView({ team, project, fixedMe, onBack, onOpenMyBoar
 }
 
 /* ---------------------------- decorations ------------------------------- */
-// A decoration is one placement of a sticker: position/size only, dragged
-// anywhere and resized from its corner handle. `src` is resolved by the
-// caller from the sticker library (decor itself just carries a stickerId).
-function Decoration({ decor, src, onChange, onDelete }) {
+// A decoration is one placement of a sticker: draggable anywhere, resized and
+// rotated from corner handles, and reorderable in the shared note/decoration
+// z-stack. `src` is resolved by the caller from the sticker library (decor
+// itself just carries a stickerId).
+function Decoration({ decor, src, onChange, onDelete, onBringForward, onSendBackward, onSaveToStash }) {
   const [live, setLive] = useState(null);
+  const [liveRot, setLiveRot] = useState(null);
 
   const track = (e, apply) => {
     e.preventDefault();
@@ -254,19 +324,70 @@ function Decoration({ decor, src, onChange, onDelete }) {
   };
 
   const startDrag = (e) => {
-    if (e.target.closest("button")) return;
+    if (e.target.closest("button,.decor-resize,.decor-rotate")) return;
     track(e, (dx, dy) => ({ x: Math.max(0, decor.x + dx), y: Math.max(0, decor.y + dy), w: decor.w }));
   };
-  const startResize = (e) =>
-    track(e, (dx) => ({ x: decor.x, y: decor.y, w: Math.max(48, decor.w + dx) }));
+  // Resize by width only — the image keeps its aspect ratio (height is auto),
+  // so we never distort it. Project the pointer delta onto the image's own
+  // x-axis so the handle tracks correctly even while rotated.
+  const startResize = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX, startY = e.clientY;
+    const startW = decor.w || 180;
+    const rad = -(decor.rot || 0) * (Math.PI / 180);
+    const cos = Math.cos(rad), sin = Math.sin(rad);
+    let latest = startW;
+    const move = (ev) => {
+      const dx = ev.clientX - startX, dy = ev.clientY - startY;
+      latest = Math.max(48, Math.round(startW + dx * cos - dy * sin));
+      setLive((l) => ({ ...(l || decor), w: latest }));
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      setLive(null);
+      onChange(() => ({ ...decor, w: latest }));
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+  // Rotate around the sticker's center, delta-based — same math as notes.
+  const startRotate = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const el = e.currentTarget.parentElement;
+    const rect = el.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const a0 = Math.atan2(e.clientY - cy, e.clientX - cx);
+    const rot0 = decor.rot || 0;
+    let latest = rot0;
+    const move = (ev) => {
+      const a = Math.atan2(ev.clientY - cy, ev.clientX - cx);
+      latest = Math.round(rot0 + ((a - a0) * 180) / Math.PI);
+      setLiveRot(latest);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      setLiveRot(null);
+      onChange(() => ({ ...decor, rot: latest }));
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+  const resetRotation = () => onChange(() => ({ ...decor, rot: 0 }));
 
   if (!src) return null; // its sticker was just removed from the library
 
   const pos = live || decor;
+  const rot = liveRot ?? decor.rot ?? 0;
+  const transforming = live || liveRot != null;
   return (
     <div
-      className={"decoration" + (live ? " active" : "")}
-      style={{ left: pos.x, top: pos.y, width: pos.w }}
+      className={"decoration" + (transforming ? " transforming" : "")}
+      style={{ left: pos.x, top: pos.y, width: pos.w, transform: `rotate(${rot}deg)`, zIndex: transforming ? 30 : decor.z ?? 0 }}
       onPointerDown={startDrag}
     >
       <img src={src} alt="" draggable={false} />
@@ -274,6 +395,24 @@ function Decoration({ decor, src, onChange, onDelete }) {
         <X size={13} />
       </button>
       <div className="decor-resize" title="Drag to resize" onPointerDown={startResize} />
+      <div className="decor-rotate" title="Drag to rotate" onPointerDown={startRotate} />
+      {Math.round(rot) !== 0 && (
+        <button className="icon-btn decor-straighten" title="Straighten" onClick={resetRotation}>
+          <RotateCcw size={13} />
+        </button>
+      )}
+      {/* Layer + save-to-stash controls, stacked on the right edge. */}
+      <div className="decor-side">
+        <button className="icon-btn decor-layer" title="Bring forward" onClick={onBringForward}>
+          <ChevronUp size={14} />
+        </button>
+        <button className="icon-btn decor-layer" title="Send backward" onClick={onSendBackward}>
+          <ChevronDown size={14} />
+        </button>
+        <button className="icon-btn decor-save" title="Save to my stash" onClick={onSaveToStash}>
+          <BookmarkIcon size={13} />
+        </button>
+      </div>
     </div>
   );
 }

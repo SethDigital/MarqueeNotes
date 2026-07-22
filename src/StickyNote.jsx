@@ -1,7 +1,7 @@
 import React, { useRef, useState, useLayoutEffect } from "react";
 import {
   Pin, PinOff, Trash2, Check, CheckCircle2, GripVertical, Clock, Bookmark, X, Palette, RotateCcw,
-  Type, Layers,
+  Type, Layers, ChevronUp, ChevronDown,
 } from "lucide-react";
 import {
   newItem, NOTE_COLORS, isNoteComplete, normalizeHexColor,
@@ -17,7 +17,7 @@ const MAX_TEXT_LENGTH = 160; // hard cap on any single line of text on a note (t
 //   "board"  — free-drag on the team-board canvas (absolute positioning).
 //   "static" — fixed in a grid on My Board; edits still write through to the
 //              same note object, so they land on the original team-board note.
-export default function StickyNote({ note, members, me, onChange, onDelete, variant = "board" }) {
+export default function StickyNote({ note, members, me, onChange, onDelete, variant = "board", onBringForward, onSendBackward }) {
   const rootRef = useRef(null);
   const titleRef = useRef(null);
   const [live, setLive] = useState(null);      // transient position while dragging
@@ -263,6 +263,10 @@ export default function StickyNote({ note, members, me, onChange, onDelete, vari
         ...(size.h ? { height: size.h } : {}),
         ...noteVars,
         transform: `rotate(${rot}deg)`,
+        // Inline zIndex drives the shared note/decoration stack; lift above
+        // everything while actively dragging/transforming so it follows the
+        // pointer unobstructed (mirrors the old .dragging/.transforming CSS).
+        zIndex: live || liveSize || liveRot != null ? 30 : note.z ?? 0,
       };
 
   return (
@@ -572,6 +576,15 @@ export default function StickyNote({ note, members, me, onChange, onDelete, vari
         <>
           <div className="note-rotate" title="Drag to rotate" onPointerDown={startRotate} />
           <div className="note-resize" title="Drag to resize" onPointerDown={startResize} />
+          {/* Layer up/down — stacked on the right edge, revealed on hover. */}
+          <div className="note-side">
+            <button className="icon-btn note-layer" title="Bring forward" onClick={onBringForward}>
+              <ChevronUp size={14} />
+            </button>
+            <button className="icon-btn note-layer" title="Send backward" onClick={onSendBackward}>
+              <ChevronDown size={14} />
+            </button>
+          </div>
         </>
       )}
     </div>

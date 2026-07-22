@@ -10,6 +10,7 @@
 //       notes: [{
 //         id, title, color, rot, x, y,          // x/y drive free-drag positioning
 //         w, h,                                  // px size; h null = auto-height (grows with content)
+//         z,                                     // stacking order — notes + decorations share one z stack
 //         createdAt, deadlineAt,                 // ISO strings; deadlineAt may be null
 //         items: [{ id, text, done, assignee, assignedBy, doneBy }],
 //         pin: null | { to: "team" } | { to: "member", member },
@@ -18,10 +19,15 @@
 //         gradient: null | { stops: [hex,hex,hex], angle: 0-360 } // 3-stop fill override
 //       }],
 //       stickers: [{ id, src }],            // reusable image library for the board
-//       decorations: [{ id, stickerId, x, y, w }]  // placed instances of a sticker
+//       decorations: [{ id, stickerId, x, y, w, rot, z }]  // placed instances of a sticker
 //     }]
 //   }]
 // }
+//
+// The personal sticker stash lives OUTSIDE the team tree (it's per-account,
+// cross-board). In the demo it's held in its own localStorage key; under the
+// backend it's the user_stickers table scoped by auth.uid(). Either way it's
+// attached to the loaded workspace as `data.stash: [{ id, src }]`.
 //
 // NOTE ON IDENTITY: assignee / assignedBy / doneBy / tunnels are name strings
 // here because the demo has no real accounts. Under the backend phase they
@@ -57,6 +63,7 @@ function migrateNote(n, i) {
     y: typeof n.y === "number" ? n.y : 28 + Math.floor(i / 4) * 250,
     w: typeof n.w === "number" ? n.w : 240,
     h: typeof n.h === "number" ? n.h : null, // null = auto height until resized
+    z: typeof n.z === "number" ? n.z : 0,    // stacking order (backfilled per-board)
     createdAt: n.createdAt || new Date().toISOString(),
     deadlineAt: n.deadlineAt || null,
     completedAt: n.completedAt || null,
@@ -78,7 +85,7 @@ function migrateNote(n, i) {
 // boards saved before stickers existed (decorations carrying their own inline
 // `src`) keep working: each unique image becomes a library entry, and the
 // decoration that placed it is rewritten to just reference it.
-function migrateProjectAssets(p) {
+export function migrateProjectAssets(p) {
   const stickers = Array.isArray(p.stickers) ? p.stickers : [];
   const bySrc = new Map(stickers.map((s) => [s.src, s.id]));
   p.decorations = (p.decorations || []).map((d) => {
@@ -94,6 +101,20 @@ function migrateProjectAssets(p) {
   p.stickers = stickers;
 }
 
+// Backfill stacking order for boards saved before layering existed. Notes and
+// decorations share ONE z stack, so we assign z across both: decorations first
+// (they used to sit beneath notes via CSS), then notes — reproducing the exact
+// pre-layering look. Anything that already has a numeric z keeps it.
+export function migrateProjectZ(p) {
+  const decs = p.decorations || [];
+  const notes = (p.notes || []).filter((n) => n && !n.deletedAt);
+  let z = 0;
+  for (const d of decs) if (typeof d.z !== "number") d.z = z++;
+  for (const n of notes) if (typeof n.z !== "number") n.z = z++;
+  // Archived notes still need a valid z so a restore-to-board can't collide.
+  for (const n of (p.notes || [])) if (n && n.deletedAt && typeof n.z !== "number") n.z = z++;
+}
+
 export function load() {
   try {
     const data = JSON.parse(localStorage.getItem(KEY));
@@ -102,6 +123,7 @@ export function load() {
         for (const p of t.projects) {
           migrateProjectAssets(p);
           p.notes = (p.notes || []).map(migrateNote);
+          migrateProjectZ(p);
         }
       return data;
     }
@@ -110,7 +132,50 @@ export function load() {
 }
 
 export function save(data) {
-  localStorage.setItem(KEY, JSON.stringify(data));
+  // The stash is stored in its own key; never let it sneak into the team tree.
+  const { stash, ...rest } = data || {};
+  localStorage.setItem(KEY, JSON.stringify(rest));
+}
+
+/* ------------------------- personal sticker stash ----------------------- */
+// Per-account, cross-board saved stickers. Kept separate from the team tree
+// (like UI overrides) so a sticker you saved from one board is yours on every
+// board. The backend equivalent is the user_stickers table; see db/supabase.js.
+const STASH_KEY = "marquee-notes-sticker-stash";
+
+// Dedupe by src — saving the same image twice just keeps the first entry.
+export function normalizeStash(list) {
+  const seen = new Set();
+  const out = [];
+  for (const s of Array.isArray(list) ? list : []) {
+    if (!s || typeof s.src !== "string" || seen.has(s.src)) continue;
+    seen.add(s.src);
+    out.push({ id: typeof s.id === "string" ? s.id : uid(), src: s.src });
+  }
+  return out;
+}
+
+export function getStash() {
+  try { return normalizeStash(JSON.parse(localStorage.getItem(STASH_KEY))); }
+  catch { return []; }
+}
+
+export function saveStash(stash) {
+  const clean = normalizeStash(stash);
+  localStorage.setItem(STASH_KEY, JSON.stringify(clean));
+  return clean;
+}
+
+// Returns the (possibly already-saved) stash entry for `src`. Idempotent.
+export function addToStash(src) {
+  const stash = getStash();
+  if (stash.some((s) => s.src === src)) return stash;
+  const next = [...stash, { id: uid(), src }];
+  return saveStash(next);
+}
+
+export function removeFromStash(stashId) {
+  return saveStash(getStash().filter((s) => s.id !== stashId));
 }
 
 // Board theme — a per-browser preference, like picking where the real board
@@ -395,6 +460,7 @@ export function newNote(index) {
     y: 28 + Math.floor(index / 4) * 250,
     w: 240,
     h: null,
+    z: 0, // bumped to nextZ() by the caller when placing on a board
     createdAt: new Date().toISOString(),
     deadlineAt: null,
     completedAt: null,
@@ -463,7 +529,48 @@ export function newSticker(src) {
 // same stickerId.
 export function newDecoration(stickerId, index) {
   // Cascade new placements so several drops don't stack invisibly.
-  return { id: uid(), stickerId, x: 48 + (index % 4) * 56, y: 48 + (index % 3) * 48, w: 180 };
+  return {
+    id: uid(),
+    stickerId,
+    x: 48 + (index % 4) * 56,
+    y: 48 + (index % 3) * 48,
+    w: 180,
+    rot: 0,
+    z: 0, // bumped to nextZ() by the caller when placing on a board
+  };
+}
+
+/* --------------------------- layering helpers --------------------------- */
+// Notes and decorations share one z stack on each board. These pure helpers
+// operate on a combined list of { id, z } items (callers pass
+// [...project.decorations, ...project.notes]).
+
+// The next z to assign a freshly added item so it lands on top.
+export function nextZ(project) {
+  let max = -1;
+  for (const d of project.decorations || []) if (typeof d.z === "number") max = Math.max(max, d.z);
+  for (const n of project.notes || []) if (typeof n.z === "number") max = Math.max(max, n.z);
+  return max + 1;
+}
+
+// Move an item up one level (swaps z with the nearest item just above it).
+// Returns a Map<id, newZ> of the changed items (empty at the top), so callers
+// can persist both sides of the swap.
+export function bringForward(items, id) {
+  const sorted = items.filter((x) => typeof x.z === "number").sort((a, b) => a.z - b.z);
+  const i = sorted.findIndex((x) => x.id === id);
+  if (i < 0 || i === sorted.length - 1) return new Map();
+  const a = sorted[i], b = sorted[i + 1];
+  return new Map([[a.id, b.z], [b.id, a.z]]);
+}
+
+// Move an item down one level (swaps z with the nearest item just below it).
+export function sendBackward(items, id) {
+  const sorted = items.filter((x) => typeof x.z === "number").sort((a, b) => a.z - b.z);
+  const i = sorted.findIndex((x) => x.id === id);
+  if (i <= 0) return new Map();
+  const a = sorted[i], b = sorted[i - 1];
+  return new Map([[a.id, b.z], [b.id, a.z]]);
 }
 
 /* ------------------------------ demo data ------------------------------- */

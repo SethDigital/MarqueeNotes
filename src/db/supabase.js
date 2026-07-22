@@ -38,6 +38,7 @@ function rowToNote(row, idToName) {
     y: row.y,
     w: row.w ?? 240,
     h: row.h ?? null,
+    z: row.z ?? 0,
     // Per-note text color + optional 3-stop gradient. Both null on older rows;
     // null text_color means "use the contrast-aware default" on the client.
     textColor: row.text_color || null,
@@ -75,12 +76,12 @@ const WORKSPACE_SELECT = `
   boards (
     id, name,
     notes (
-      id, title, color, rot, x, y, w, h, created_at, deadline_at, completed_at, deleted_at, pin, pinned_member, text_color, gradient,
+      id, title, color, rot, x, y, w, h, z, created_at, deadline_at, completed_at, deleted_at, pin, pinned_member, text_color, gradient,
       checklist_items ( id, text, done, done_at, position, assignee_id, assigned_by_id, done_by_id ),
       tunnels ( user_id )
     ),
     stickers ( id, src ),
-    decorations ( id, sticker_id, x, y, w )
+    decorations ( id, sticker_id, x, y, w, rot, z )
   )
 `;
 
@@ -103,12 +104,21 @@ async function loadWorkspace() {
         notes: (b.notes || []).map((n) => rowToNote(n, idToName)),
         stickers: (b.stickers || []).map((s) => ({ id: s.id, src: s.src })),
         decorations: (b.decorations || []).map((d) => ({
-          id: d.id, stickerId: d.sticker_id, x: d.x, y: d.y, w: d.w,
+          id: d.id, stickerId: d.sticker_id, x: d.x, y: d.y, w: d.w, rot: d.rot ?? 0, z: d.z ?? 0,
         })),
       })),
     };
   });
-  return { teams };
+
+  // The personal sticker stash is per-user (auth.uid), not per-team. RLS scopes
+  // it to the caller, so a plain select returns only this user's saved stickers.
+  const { data: stashRows, error: stashErr } = await supabase
+    .from("user_stickers")
+    .select("id, src")
+    .order("created_at", { ascending: true });
+  const stash = stashErr ? [] : (stashRows || []).map((s) => ({ id: s.id, src: s.src }));
+
+  return { teams, stash };
 }
 
 // Resolve a team's name→id map on demand (for translating writes).
@@ -135,6 +145,7 @@ async function writeNote(teamId, projectId, note) {
     y: note.y,
     w: note.w ?? 240,
     h: note.h ?? null,
+    z: note.z ?? 0,
     deadline_at: note.deadlineAt,
     completed_at: note.completedAt || null,
     deleted_at: note.deletedAt || null,
@@ -297,18 +308,37 @@ export const supabaseBackend = {
     const { error } = await supabase.from("decorations").insert({
       id: decoration.id, board_id: projectId,
       sticker_id: decoration.stickerId, x: decoration.x, y: decoration.y, w: decoration.w,
+      rot: decoration.rot ?? 0, z: decoration.z ?? 0,
     });
     if (error) throw error;
   },
   async updateDecoration(teamId, projectId, decoration) {
     const { error } = await supabase
       .from("decorations")
-      .update({ x: decoration.x, y: decoration.y, w: decoration.w })
+      .update({ x: decoration.x, y: decoration.y, w: decoration.w, rot: decoration.rot ?? 0, z: decoration.z ?? 0 })
       .eq("id", decoration.id);
     if (error) throw error;
   },
   async deleteDecoration(teamId, projectId, decorationId) {
     const { error } = await supabase.from("decorations").delete().eq("id", decorationId);
+    if (error) throw error;
+  },
+
+  /* -------------------------------- stash ------------------------------- */
+  // Personal saved stickers. RLS restricts to auth.uid(), so no user filter is
+  // needed. A unique index on (user_id, src) makes the upsert idempotent.
+  async addToStash(src) {
+    const { data: user } = await supabase.auth.getUser();
+    const { data, error } = await supabase
+      .from("user_stickers")
+      .upsert({ user_id: user.user.id, src }, { onConflict: "user_id,src", ignoreDuplicates: true })
+      .select("id, src")
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  },
+  async removeFromStash(stashId) {
+    const { error } = await supabase.from("user_stickers").delete().eq("id", stashId);
     if (error) throw error;
   },
 
@@ -323,6 +353,7 @@ export const supabaseBackend = {
       .on("postgres_changes", { event: "*", schema: "public", table: "decorations" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "stickers" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "tunnels" }, onChange)
+      .on("postgres_changes", { event: "*", schema: "public", table: "user_stickers" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "memberships" }, onChange)
       .subscribe();
     return () => supabase.removeChannel(channel);
