@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { ArrowLeft, Bookmark, Users } from "lucide-react";
 import {
-  selectMyBoard, allMemberNames, THEMES,
+  selectMyBoard, allMembers, THEMES,
   getGlobalMe, setGlobalMe, getSectionTheme, setSectionTheme,
   getSectionHeight, setSectionHeight, SECTION_MIN_HEIGHT,
 } from "./store.js";
@@ -12,9 +12,9 @@ import StickyNote from "./StickyNote.jsx";
 // note here writes straight through to the original team-board note (a yoink is
 // a link, not a copy), via the patchNote handler passed from Workspace.
 export default function PersonalBoard({ data, fixedMe, patchNote, onBack }) {
-  // Under the real backend identity is the signed-in user; in the demo it's a
-  // cross-team name the person picks here (the per-team "working as" name can't
-  // span teams).
+  // Under the real backend identity is the signed-in user's profile id; in the
+  // demo it's a cross-team member id the person picks here (the per-team
+  // "working as" pick can't span teams). Always an id — demo ids are names.
   const [demoMe, setDemoMe] = useState(() => getGlobalMe());
   const me = fixedMe || demoMe;
 
@@ -61,8 +61,8 @@ export default function PersonalBoard({ data, fixedMe, patchNote, onBack }) {
             You&rsquo;re
             <select value={me} onChange={(e) => pickMe(e.target.value)}>
               <option value="">pick your name</option>
-              {allMemberNames(data).map((m) => (
-                <option key={m} value={m}>{m}</option>
+              {allMembers(data).map((m) => (
+                <option key={m.id} value={m.id}>{m.name}</option>
               ))}
             </select>
           </label>

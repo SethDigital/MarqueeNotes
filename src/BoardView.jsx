@@ -274,6 +274,7 @@ export default function BoardView({ team, project, fixedMe, onBack, onOpenMyBoar
         <CompletedNotesModal
           boardName={project.name}
           notes={completedNotes}
+          members={team.members}
           onClose={() => setCompletedOpen(false)}
         />
       )}

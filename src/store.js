@@ -29,9 +29,14 @@
 // backend it's the user_stickers table scoped by auth.uid(). Either way it's
 // attached to the loaded workspace as `data.stash: [{ id, src }]`.
 //
-// NOTE ON IDENTITY: assignee / assignedBy / doneBy / tunnels are name strings
-// here because the demo has no real accounts. Under the backend phase they
-// become user IDs and the shape is otherwise unchanged.
+// NOTE ON IDENTITY: a team member is { id, name }, and every identity field on
+// a note (assignee / assignedBy / doneBy / tunnels / pin.member) holds a member
+// ID — never a display name. Names are looked up at render time via
+// memberName(). This matters for security: under the backend, IDs are profile
+// UUIDs, and mapping by name would let a teammate hijack assignments and
+// yoinks just by renaming themselves to match someone else. The demo has no
+// real accounts, so its member IDs are simply the names themselves (id ===
+// name) — which also keeps saves from before this change loading unmodified.
 
 const KEY = "marquee-notes-v1";
 
@@ -119,12 +124,20 @@ export function load() {
   try {
     const data = JSON.parse(localStorage.getItem(KEY));
     if (data && Array.isArray(data.teams)) {
-      for (const t of data.teams)
+      for (const t of data.teams) {
+        // Members used to be bare name strings; they're { id, name } now. Demo
+        // ids ARE the names (see the identity note up top), so a string member
+        // migrates losslessly and old notes' name-valued identity fields keep
+        // matching without being rewritten.
+        t.members = (t.members || []).map((m) =>
+          typeof m === "string" ? { id: m, name: m } : m
+        );
         for (const p of t.projects) {
           migrateProjectAssets(p);
           p.notes = (p.notes || []).map(migrateNote);
           migrateProjectZ(p);
         }
+      }
       return data;
     }
   } catch {}
@@ -601,7 +614,8 @@ export function demoData() {
       {
         id: uid(),
         name: "Design Team",
-        members: ["Avery", "Sam", "Jordan"],
+        // Demo member ids are the names themselves — see the identity note.
+        members: ["Avery", "Sam", "Jordan"].map((n) => ({ id: n, name: n })),
         projects: [
           {
             id: uid(),
@@ -702,5 +716,16 @@ export function selectMyBoard(data, me) {
 }
 
 // Everyone the demo knows about, for the cross-team My Board identity picker.
-export const allMemberNames = (data) =>
-  [...new Set((data.teams || []).flatMap((t) => t.members || []))].sort();
+// Deduped by member id (demo ids are names, so this is also a name dedupe).
+export function allMembers(data) {
+  const byId = new Map();
+  for (const t of data.teams || [])
+    for (const m of t.members || []) if (!byId.has(m.id)) byId.set(m.id, m);
+  return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// Resolve a member id to its display name, or null when the id isn't on the
+// roster (e.g. a teammate who has since left) — callers hide the field then,
+// matching what the old name-mapping did for unknown members.
+export const memberName = (members, id) =>
+  (id && (members || []).find((m) => m.id === id)?.name) || null;

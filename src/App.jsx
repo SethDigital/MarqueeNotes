@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
   Plus, Users, ArrowLeft, Pin, Trash2, X, FolderOpen, Sparkles, LayoutDashboard, Ticket, Bookmark,
 } from "lucide-react";
-import { uid, getMe, setMe, isNoteActive, representativeSolid } from "./store.js";
+import { uid, getMe, setMe, isNoteActive, representativeSolid, memberName } from "./store.js";
 import { db, usingBackend } from "./db/index.js";
 import AuthGate from "./AuthGate.jsx";
 import BoardView from "./BoardView.jsx";
@@ -22,9 +22,11 @@ export default function App() {
 function Workspace({ user }) {
   const [data, setData] = useState(null); // null while the first load is in flight
   const [view, setView] = useState({ screen: "home" });
-  // Under a real backend identity is fixed to the signed-in user; in the demo
-  // it stays the per-team "working as" name.
-  const fixedMe = user?.name || null;
+  // Under a real backend identity is fixed to the signed-in user's profile id;
+  // in the demo it stays the per-team "working as" member id (which IS the
+  // name — see the identity note in store.js). `me` is always an id; names are
+  // resolved for display via memberName().
+  const fixedMe = user?.id || null;
   const lastEditRef = useRef(0);   // when the user last changed something locally
   const reloadTimer = useRef(null);
   const patchPending = useRef(new Map()); // noteId -> debounced persist (My Board edits)
@@ -321,7 +323,10 @@ function NewTeamModal({ onClose, onCreate }) {
     onCreate({
       id: uid(),
       name: name.trim(),
-      members: usingBackend ? [] : members.split(",").map((m) => m.trim()).filter(Boolean),
+      // Demo member ids are the names themselves — see the identity note in store.js.
+      members: usingBackend
+        ? []
+        : [...new Set(members.split(",").map((m) => m.trim()).filter(Boolean))].map((n) => ({ id: n, name: n })),
       projects: [],
     });
     onClose();
@@ -376,8 +381,9 @@ function TeamScreen({ team, fixedMe, onBack, onOpenProject, onAddProject, onSetM
   const addMember = (e) => {
     e.preventDefault();
     const name = newMember.trim();
-    if (!name || team.members.includes(name)) return;
-    onSetMembers([...team.members, name]);
+    if (!name || team.members.some((m) => m.name === name)) return;
+    // Demo member ids are the names themselves — see the identity note in store.js.
+    onSetMembers([...team.members, { id: name, name }]);
     setNewMember("");
   };
 
@@ -470,7 +476,7 @@ function TeamScreen({ team, fixedMe, onBack, onOpenProject, onAddProject, onSetM
                 <option value="all">All pins</option>
                 <option value="team">Whole team</option>
                 {team.members.map((m) => (
-                  <option key={m} value={m}>{m}</option>
+                  <option key={m.id} value={m.id}>{m.name}</option>
                 ))}
               </select>
             </div>
@@ -483,7 +489,7 @@ function TeamScreen({ team, fixedMe, onBack, onOpenProject, onAddProject, onSetM
                     <Pin size={14} /> {note.title || "Untitled note"}
                   </div>
                   <div className="card-sub dark">
-                    {project.name} · {note.pin.to === "team" ? "Whole team" : note.pin.member}
+                    {project.name} · {note.pin.to === "team" ? "Whole team" : memberName(team.members, note.pin.member) || "a teammate"}
                     {note.items.length > 0 &&
                       ` · ${note.items.filter((i) => i.done).length}/${note.items.length} done`}
                   </div>
@@ -509,13 +515,13 @@ function TeamScreen({ team, fixedMe, onBack, onOpenProject, onAddProject, onSetM
             )}
             <ul className="member-list">
               {team.members.map((m) => (
-                <li key={m}>
-                  {m}
+                <li key={m.id}>
+                  {m.name}
                   {canEditMembers && (
                     <button
                       className="icon-btn"
                       title="Remove member"
-                      onClick={() => onSetMembers(team.members.filter((x) => x !== m))}
+                      onClick={() => onSetMembers(team.members.filter((x) => x.id !== m.id))}
                     >
                       <X size={14} />
                     </button>

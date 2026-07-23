@@ -1,6 +1,6 @@
 import React from "react";
 import { Bookmark, Loader, CheckCircle2, Send } from "lucide-react";
-import { selectDashboard, representativeSolid } from "./store.js";
+import { selectDashboard, representativeSolid, memberName } from "./store.js";
 import Deadline from "./Deadline.jsx";
 
 // A personal to-do view derived from the team's notes, so nothing a person is
@@ -26,7 +26,7 @@ export default function PersonalDashboard({ team, me, onOpenProject }) {
   const cols = selectDashboard(team, me);
   return (
     <>
-      <p className="hint">Everything <strong>{me}</strong> is on across {team.name}, in one glance.</p>
+      <p className="hint">Everything <strong>{memberName(team.members, me) || "you"}</strong> is on across {team.name}, in one glance.</p>
       <div className="dashboard-grid">
         {COLUMNS.map(({ key, title, icon: Icon, blurb }) => (
           <section key={key} className="dash-col">

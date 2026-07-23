@@ -7,28 +7,26 @@
 // as needing a first real run before you rely on it.
 //
 // The tree the UI renders is denormalized (team → projects → notes → items).
-// This module maps that tree to/from the normalized tables and translates the
-// demo's name strings (assignee/doneBy/tunnels) to profile ids per team.
+// This module maps that tree to/from the normalized tables. Identity fields
+// (assignee/doneBy/tunnels/pin.member) are profile UUIDs end to end — they
+// pass through untranslated, and the UI resolves them to display names at
+// render time from team.members. There is deliberately NO name→id mapping
+// here: display names aren't unique and any member can change theirs, so
+// mapping by name would let a teammate capture assignments and yoinks just by
+// renaming themselves to match someone else (2026-07 audit, finding M2).
 
 import { supabase } from "../supabase.js";
 
 /* --------------------------- tree <-> tables ---------------------------- */
 
-// Build name<->id maps for a team's members so the demo's name-based
-// assignee/doneBy/tunnel fields can round-trip to profile ids.
-function memberMaps(memberships) {
-  const idToName = new Map();
-  const nameToId = new Map();
-  for (const m of memberships || []) {
-    const p = m.profiles;
-    if (!p) continue;
-    idToName.set(p.id, p.display_name);
-    nameToId.set(p.display_name, p.id);
-  }
-  return { idToName, nameToId };
-}
+// Ids that get spliced into PostgREST filter strings below must be real UUIDs
+// — a value carrying `,` or `)` would change the filter's meaning. Every id
+// here is client-generated via crypto.randomUUID or a profile UUID, so
+// anything else is corrupt and gets dropped rather than interpolated.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const uuidsOnly = (ids) => ids.filter((id) => typeof id === "string" && UUID_RE.test(id));
 
-function rowToNote(row, idToName) {
+function rowToNote(row) {
   return {
     id: row.id,
     title: row.title,
@@ -51,9 +49,9 @@ function rowToNote(row, idToName) {
       row.pin === "team"
         ? { to: "team" }
         : row.pin === "member"
-        ? { to: "member", member: idToName.get(row.pinned_member) || null }
+        ? { to: "member", member: row.pinned_member || null }
         : null,
-    tunnels: (row.tunnels || []).map((t) => idToName.get(t.user_id)).filter(Boolean),
+    tunnels: (row.tunnels || []).map((t) => t.user_id).filter(Boolean),
     items: (row.checklist_items || [])
       .sort((a, b) => a.position - b.position)
       .map((i) => ({
@@ -61,9 +59,9 @@ function rowToNote(row, idToName) {
         text: i.text,
         done: i.done,
         doneAt: i.done_at,
-        assignee: idToName.get(i.assignee_id) || null,
-        assignedBy: idToName.get(i.assigned_by_id) || null,
-        doneBy: idToName.get(i.done_by_id) || null,
+        assignee: i.assignee_id || null,
+        assignedBy: i.assigned_by_id || null,
+        doneBy: i.done_by_id || null,
       })),
   };
 }
@@ -91,17 +89,20 @@ async function loadWorkspace() {
   const { data, error } = await supabase.from("teams").select(WORKSPACE_SELECT);
   if (error) throw error;
   const teams = (data || []).map((team) => {
-    const { idToName } = memberMaps(team.memberships);
     return {
       id: team.id,
       name: team.name,
       // The caller's own role on this team — drives who may mint invites.
       myRole: (team.memberships || []).find((m) => m.profiles?.id === myId)?.role || null,
-      members: (team.memberships || []).map((m) => m.profiles?.display_name).filter(Boolean),
+      // { id, name } pairs — the id is the profile UUID the note identity
+      // fields reference; the name is only ever for display.
+      members: (team.memberships || [])
+        .map((m) => m.profiles && { id: m.profiles.id, name: m.profiles.display_name })
+        .filter(Boolean),
       projects: (team.boards || []).map((b) => ({
         id: b.id,
         name: b.name,
-        notes: (b.notes || []).map((n) => rowToNote(n, idToName)),
+        notes: (b.notes || []).map(rowToNote),
         stickers: (b.stickers || []).map((s) => ({ id: s.id, src: s.src })),
         decorations: (b.decorations || []).map((d) => ({
           id: d.id, stickerId: d.sticker_id, x: d.x, y: d.y, w: d.w, rot: d.rot ?? 0, z: d.z ?? 0,
@@ -121,20 +122,9 @@ async function loadWorkspace() {
   return { teams, stash };
 }
 
-// Resolve a team's name→id map on demand (for translating writes).
-async function nameToIdFor(teamId) {
-  const { data, error } = await supabase
-    .from("memberships")
-    .select("profiles ( id, display_name )")
-    .eq("team_id", teamId);
-  if (error) throw error;
-  return memberMaps(data).nameToId;
-}
-
 /* -------------------------------- writes -------------------------------- */
 
 async function writeNote(teamId, projectId, note) {
-  const nameToId = await nameToIdFor(teamId);
   const { error: noteErr } = await supabase.from("notes").upsert({
     id: note.id,
     board_id: projectId,
@@ -150,7 +140,7 @@ async function writeNote(teamId, projectId, note) {
     completed_at: note.completedAt || null,
     deleted_at: note.deletedAt || null,
     pin: note.pin ? note.pin.to : "none",
-    pinned_member: note.pin?.to === "member" ? nameToId.get(note.pin.member) || null : null,
+    pinned_member: note.pin?.to === "member" ? note.pin.member || null : null,
     text_color: note.textColor || null,
     gradient: note.gradient || null,
   });
@@ -165,22 +155,24 @@ async function writeNote(teamId, projectId, note) {
     position: i,
     done: it.done,
     done_at: it.doneAt || null,
-    assignee_id: nameToId.get(it.assignee) || null,
-    assigned_by_id: nameToId.get(it.assignedBy) || null,
-    done_by_id: nameToId.get(it.doneBy) || null,
+    assignee_id: it.assignee || null,
+    assigned_by_id: it.assignedBy || null,
+    done_by_id: it.doneBy || null,
   }));
   if (items.length) await supabase.from("checklist_items").upsert(items);
-  const keepIds = items.map((i) => i.id);
+  const keepIds = uuidsOnly(items.map((i) => i.id));
   let del = supabase.from("checklist_items").delete().eq("note_id", note.id);
   if (keepIds.length) del = del.not("id", "in", `(${keepIds.join(",")})`);
   await del;
 
-  // Reconcile tunnels for the members named on the note. ignoreDuplicates turns
-  // this into ON CONFLICT DO NOTHING rather than DO UPDATE — tunnels only ever
-  // carry (user_id, note_id), so a re-yoink of an already-yoinked note has
-  // nothing to update, and there's deliberately no UPDATE policy on tunnels
-  // (see 0001_init.sql) for RLS to allow it against.
-  const tunnelIds = note.tunnels.map((n) => nameToId.get(n)).filter(Boolean);
+  // Reconcile tunnels for the members yoinked onto the note (already profile
+  // UUIDs). ignoreDuplicates turns this into ON CONFLICT DO NOTHING rather
+  // than DO UPDATE — tunnels only ever carry (user_id, note_id), so a re-yoink
+  // of an already-yoinked note has nothing to update, and there's deliberately
+  // no UPDATE policy on tunnels (see 0001_init.sql) for RLS to allow it
+  // against. RLS also means only the caller's own tunnel row can actually be
+  // inserted or deleted here; teammates' rows conflict-ignore / no-op.
+  const tunnelIds = uuidsOnly(note.tunnels);
   if (tunnelIds.length) {
     const { error: tunnelErr } = await supabase.from("tunnels").upsert(
       tunnelIds.map((uid) => ({ user_id: uid, note_id: note.id })),

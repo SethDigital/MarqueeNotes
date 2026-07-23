@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { CheckCircle2, Clock, AlarmClock, ChevronRight, Check } from "lucide-react";
 import Modal from "./Modal.jsx";
 import { formatDelta } from "./Deadline.jsx";
-import { representativeSolid } from "./store.js";
+import { representativeSolid, memberName } from "./store.js";
 
 const fmt = (iso) =>
   iso
@@ -25,7 +25,7 @@ function DeadlineSlack({ deadlineIso, completedIso }) {
   );
 }
 
-function CompletedRow({ note }) {
+function CompletedRow({ note, members }) {
   const [open, setOpen] = useState(false);
   return (
     <li className={"completed-row" + (open ? " open" : "")} style={{ "--note-color": representativeSolid(note.color, note.gradient) }}>
@@ -44,21 +44,26 @@ function CompletedRow({ note }) {
             <p className="completed-empty">No steps — this note was marked complete directly.</p>
           ) : (
             <ul className="completed-steps">
-              {note.items.map((it) => (
-                <li key={it.id} className={it.done ? "done" : "undone"}>
-                  <span className={"completed-check" + (it.done ? " on" : "")}>
-                    {it.done && <Check size={11} />}
-                  </span>
-                  <span className="completed-step-text">{it.text}</span>
-                  {it.done ? (
-                    <span className="completed-step-meta">
-                      {it.doneBy ? `${it.doneBy} · ` : ""}{fmt(it.doneAt) || "done"}
+              {note.items.map((it) => {
+                // doneBy is a member id; show the name, or skip it for someone
+                // no longer on the roster.
+                const doneByName = memberName(members, it.doneBy);
+                return (
+                  <li key={it.id} className={it.done ? "done" : "undone"}>
+                    <span className={"completed-check" + (it.done ? " on" : "")}>
+                      {it.done && <Check size={11} />}
                     </span>
-                  ) : (
-                    <span className="completed-step-meta muted">not done</span>
-                  )}
-                </li>
-              ))}
+                    <span className="completed-step-text">{it.text}</span>
+                    {it.done ? (
+                      <span className="completed-step-meta">
+                        {doneByName ? `${doneByName} · ` : ""}{fmt(it.doneAt) || "done"}
+                      </span>
+                    ) : (
+                      <span className="completed-step-meta muted">not done</span>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
@@ -70,7 +75,7 @@ function CompletedRow({ note }) {
 // The "stack of notes" viewer: every completed note on a board, newest
 // completion first, each expandable to show who finished which step and when,
 // plus how much deadline time was left.
-export default function CompletedNotesModal({ boardName, notes, onClose }) {
+export default function CompletedNotesModal({ boardName, notes, members, onClose }) {
   const sorted = [...notes].sort(
     (a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime()
   );
@@ -86,7 +91,7 @@ export default function CompletedNotesModal({ boardName, notes, onClose }) {
           <p className="hint">{sorted.length} completed · newest first. Click a note for the details.</p>
           <ul className="completed-list">
             {sorted.map((note) => (
-              <CompletedRow key={note.id} note={note} />
+              <CompletedRow key={note.id} note={note} members={members} />
             ))}
           </ul>
         </>

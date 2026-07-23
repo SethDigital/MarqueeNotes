@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 import {
   newItem, NOTE_COLORS, isNoteComplete, normalizeHexColor,
-  gradientCss, representativeSolid, smartTextColor,
+  gradientCss, representativeSolid, smartTextColor, memberName,
 } from "./store.js";
 import Deadline from "./Deadline.jsx";
 
@@ -34,6 +34,9 @@ export default function StickyNote({ note, members, me, onChange, onDelete, vari
   const doneCount = note.items.filter((i) => i.done).length;
   const yoinked = me && note.tunnels.includes(me);
   const completed = isNoteComplete(note);
+  // `me` and every identity field on the note are member ids; resolve to a
+  // display name only at the moment of rendering.
+  const meName = memberName(members, me);
 
   /* --- free drag: reposition the note anywhere on the canvas (board only) --- */
   const startDrag = (e) => {
@@ -284,7 +287,7 @@ export default function StickyNote({ note, members, me, onChange, onDelete, vari
     >
       {note.pin && !isStatic && (
         <div className="note-pin-flag">
-          <Pin size={12} /> {note.pin.to === "team" ? "Team" : note.pin.member}
+          <Pin size={12} /> {note.pin.to === "team" ? "Team" : memberName(members, note.pin.member) || "a teammate"}
         </div>
       )}
       {completed && (
@@ -310,8 +313,8 @@ export default function StickyNote({ note, members, me, onChange, onDelete, vari
                   <Pin size={13} /> Whole team
                 </button>
                 {members.map((m) => (
-                  <button key={m} onClick={() => { onChange((n) => ({ ...n, pin: { to: "member", member: m } })); setPinMenu(false); }}>
-                    {m}
+                  <button key={m.id} onClick={() => { onChange((n) => ({ ...n, pin: { to: "member", member: m.id } })); setPinMenu(false); }}>
+                    {m.name}
                   </button>
                 ))}
                 {members.length === 0 && <div className="pin-menu-hint">Add members on the team screen to pin to a person.</div>}
@@ -464,14 +467,17 @@ export default function StickyNote({ note, members, me, onChange, onDelete, vari
           <li key={item.id} className={item.done ? "done" : ""}>
             <button
               className={"check" + (item.done ? " checked" : "")}
-              title={item.done ? "Mark as not done" : me ? `Check off as ${me}` : "Check off"}
+              title={item.done ? "Mark as not done" : meName ? `Check off as ${meName}` : "Check off"}
               onClick={() => toggleItemDone(item)}
             >
               {item.done && <Check size={11} />}
             </button>
             <span className="item-text">{item.text}</span>
             {item.done ? (
-              item.doneBy && <span className="done-by" title={`Handled by ${item.doneBy}`}>{item.doneBy} ✓</span>
+              (() => {
+                const doneByName = memberName(members, item.doneBy);
+                return doneByName && <span className="done-by" title={`Handled by ${doneByName}`}>{doneByName} ✓</span>;
+              })()
             ) : (
               <select
                 className="assignee"
@@ -488,7 +494,7 @@ export default function StickyNote({ note, members, me, onChange, onDelete, vari
               >
                 <option value="">–</option>
                 {members.map((m) => (
-                  <option key={m} value={m}>{m}</option>
+                  <option key={m.id} value={m.id}>{m.name}</option>
                 ))}
               </select>
             )}
