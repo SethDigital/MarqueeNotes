@@ -83,19 +83,21 @@ export const localBackend = {
   async redeemInvite(code) {
     const wanted = normalizeInviteCode(code);
     const now = Date.now();
-    let result = null, expired = false;
+    let result = null;
     mutate((d) => {
       for (const t of d.teams) {
         const inv = (t.invites || []).find((i) => i.code === wanted);
         if (!inv) continue;
-        if (new Date(inv.expiresAt).getTime() <= now) { expired = true; return; }
+        if (new Date(inv.expiresAt).getTime() <= now) return; // expired = invalid
         inv.uses = (inv.uses || 0) + 1;
         result = { teamId: t.id, teamName: t.name };
         return;
       }
     });
-    if (expired) throw new Error("That invite code has expired — ask for a fresh one");
-    if (!result) throw new Error("That invite code is not valid");
+    // One message for "never existed" and "expired" — an expired-specific
+    // error would confirm a guessed code was once real (mirrors the backend's
+    // redeem_invite(), see 0010_redeem_error_collapse.sql).
+    if (!result) throw new Error("That invite code is not valid or has expired — ask for a fresh one");
     return result;
   },
 

@@ -246,13 +246,15 @@ export const supabaseBackend = {
   },
 
   // Redeem a code to join its team. Returns { teamId, teamName } on success and
-  // throws with a human-readable message otherwise (invalid / expired / already
-  // a member). Expiry is enforced in redeem_invite() on the server.
+  // throws with a human-readable message otherwise (invalid-or-expired / already
+  // a member). Expiry is enforced in redeem_invite() on the server, which
+  // deliberately answers "never existed" and "expired" identically — see
+  // 0010_redeem_error_collapse.sql.
   async redeemInvite(code) {
     const { data, error } = await supabase.rpc("redeem_invite", { _code: code });
     if (error) throw error;
     const row = Array.isArray(data) ? data[0] : data;
-    if (!row) throw new Error("That invite code is not valid");
+    if (!row) throw new Error("That invite code is not valid or has expired — ask for a fresh one");
     return { teamId: row.team_id, teamName: row.team_name };
   },
 
