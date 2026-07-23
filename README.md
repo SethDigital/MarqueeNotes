@@ -1,65 +1,132 @@
 # MarqueeNotes
 
-A shared whiteboard for teams. Put up sticky notes with step-by-step checklists,
-see at a glance who's on what and what's already handled, and decorate the board
-with images and GIFs so it feels like *your* team's wall.
+A shared corkboard for teams. Stick up notes with step-by-step checklists, drag
+them anywhere, see at a glance who's on what and what's already handled — then
+make the board *yours* with stickers, themes, and custom colors. Changes sync
+live to every teammate looking at the same board.
 
-Built with React + Vite. **Demo build: no backend, no logins** — all data lives in
-the browser's `localStorage`. This phase is for showing the concept (hosted free on
-GitHub Pages) before moving to a proper backend.
+Built with React + Vite on a Supabase backend (Postgres + Row-Level Security +
+Realtime), deployed to GitHub Pages. Without backend credentials it runs as a
+fully-featured single-browser demo on `localStorage` — same UI, no accounts.
 
 ## Features
 
-| Feature | How |
-|---|---|
-| Teams | Independent workspaces — open one and you're in |
-| Projects | Each team contains any number of project boards |
-| Sticky notes | Click **New note**; drag any note anywhere by its grip, or hit **Tidy up** to line them up |
-| Steps (checklists) | Each note has its own step list — add steps, check them off |
-| Who's on what | Assign a teammate to any step; done steps show who handled them |
-| Deadlines | Give a note a due date and it shows a live countdown (turns amber when close, red when overdue) |
-| Working as | Pick your name in the top bar; steps you check off carry it |
-| Tunneling | Bookmark a team note onto your own **My Dashboard** without removing it from the board |
-| My Dashboard | Your personal to-do view: Pinned, Working On, Completed, and Distributed |
-| Pinning | Pin a note for the whole team or a specific member |
-| Pinned tab | Team-wide view of every pinned note, filterable by member |
-| Decorations | Upload images or transparent GIFs and place them anywhere on the board |
-| Themes | Corkboard (default), Whiteboard, or Neon dark mode with glowing notes — pick in the top bar |
-| Demo data | "Load demo data" on first launch to look around |
+### Notes & boards
+- **Free-drag sticky notes** — place a note anywhere on the canvas, or hit
+  **Tidy up** to snap everything into neat columns
+- **Rotate & resize** any note from its corner handles; a one-click
+  *straighten* resets the angle
+- **Layering** — notes and stickers share one stacking order, with
+  bring-forward / send-backward controls on every item
+- **Deadlines** with a live countdown that turns amber when close and red when
+  overdue
+- **Completed archive** — "deleting" a note never destroys it; it moves into
+  the board's Completed stack with its full step record intact. The viewer
+  shows who finished which step when, and how far ahead of (or past) the
+  deadline the note landed
+- **Mark complete / reopen** — end a note early with steps still open, or let
+  it auto-complete when the last step is checked
+
+### Checklists & people
+- **Steps** on every note — add, check off, remove
+- **Assignment** — put a teammate on any step; done steps show who handled
+  them ("Avery ✓")
+- **Pinning** — flag a note for the whole team or a specific member; the
+  team's **Pinned** tab collects every flag, filterable by person
+- **My Dashboard** (per team) — four derived columns: *Pinned*, *Working On*,
+  *Completed*, and *Distributed* (steps you handed to teammates)
+
+### Yoink & My Board
+- **Yoink** a team note onto your personal board — it's a link, not a copy, so
+  edits made from either side land on the same note
+- **My Board** — one click from every screen: everything you've yoinked across
+  *all* your teams, grouped into one mini-board section per team, each with its
+  own theme and resizable height
+
+### Stickers
+- **Board sticker library** — upload an image or transparent GIF once
+  (PNG/JPEG/WebP/GIF, ≤ 0.9 MB), then place it on the canvas as many times as
+  you like; placements drag, resize, and rotate like notes
+- **Personal stash** — save any placed sticker to your own cross-board
+  collection and drop it onto any other board
+
+### Color & themes
+- **Board themes** — Corkboard (default), Whiteboard, or Neon dark mode with
+  glowing notes
+- **Note colors** — six quick swatches plus a full picker with hex input; an
+  optional **3-stop gradient fill** with adjustable angle
+- **Per-note text color**, with a contrast-aware automatic default
+- **Customize panel** — override the interface's accent, controls, text,
+  background, and panel colors (background/panel accept gradients), and save
+  named presets
+
+### Teams, accounts & sync
+- **Real accounts** (Supabase email/password with email confirmation) and
+  **roles** — the team creator is admin; everyone else joins as a member
+- **Invite codes** — an admin mints a short say-it-out-loud code
+  (`ABCD-EFGH`), shares it anywhere, and anyone signed in can join with it
+  until it expires (3 hours). Admins see live codes, their use counts, and can
+  revoke them
+- **Realtime sync** — persisted changes fan out to every open board, with
+  in-flight typing protected from being stomped by echoes
+- **Per-team visibility, enforced in the database** — Row-Level Security means
+  a team's notes, stickers, and roster are readable *only* by that team's
+  members, no matter what a client sends
+
+## Security
+
+The codebase went through a full security audit (2026-07-22) and the fixes are
+in. Highlights:
+
+- RLS on every table, with invite redemption and team creation going through
+  `SECURITY DEFINER` functions that make their own checks
+- **Identity is id-based end to end** — assignments, pins, and yoinks carry
+  profile UUIDs, never display names, so renaming yourself can't capture
+  someone else's work (`memberName()` resolves ids at render time only)
+- Teammate email addresses are not stored in the readable profile table
+- Sticker images are constrained at the database (`data:image/*`, size-capped)
+  *and* by the production Content-Security-Policy, so an external tracking URL
+  can't fire even if one slipped in
+- Invite codes come from a CSPRNG, and redemption answers "never existed" and
+  "expired" identically
+- The production build ships a strict CSP (`script-src 'self'`, `connect-src`
+  pinned to the one Supabase origin) injected at build time
 
 ## Run locally
 
 ```bash
 npm install
-npm run dev      # http://localhost:5173
+npm run dev      # http://localhost:5173 — demo mode (localStorage, no login)
 ```
 
-## Deploy to GitHub Pages
+To run against a real backend, copy `.env.example` to `.env` and fill in
+`VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`. The app picks the backend at
+startup — no code change.
 
-A workflow at `.github/workflows/deploy.yml` builds and publishes automatically.
-One-time setup:
+```bash
+npm run build && npm run preview   # production build (includes the CSP) on :4173
+```
 
-1. On GitHub: **Settings → Pages → Build and deployment → Source: GitHub Actions**.
-   (This must be "GitHub Actions", *not* "Deploy from a branch" — branch mode serves
-   the raw source, which cannot run in a browser, and you'll get a blank page.)
-2. Push to `main` (or run the workflow manually). The site appears at
-   `https://<user>.github.io/<repo>/`.
+## Backend
 
-## Current limitations (by design, for the demo)
+Everything talks to a `db` repository ([`src/db/`](src/db)) with two
+interchangeable implementations: `localStorage` (demo) and Supabase. The
+schema, RLS policies, and invite functions live in ordered migrations under
+[`supabase/migrations/`](supabase/migrations) — applied by pasting into the
+Supabase SQL editor (or `supabase db push`).
 
-- **No shared data.** `localStorage` is per-browser — each viewer gets their own copy
-  of the boards. Real team sync requires the backend phase.
-- **No accounts.** "Working as" is a name you pick, not a login.
-- **Decorations are stored inline** (data URLs, ≤0.9 MB each) to stay inside
-  `localStorage` quota; the backend phase moves them to real file storage.
-- All persistence goes through [`src/store.js`](src/store.js), so swapping in a real
-  API later means changing only that file.
+**Rule: apply new migrations to the live database before (or immediately
+after) deploying code that needs them.** Details, schema diagram, and a
+migration-state probe are in [`docs/BACKEND.md`](docs/BACKEND.md).
 
-## Phase 2 — real backend (wired, pending a live project)
+## Deploy
 
-The whole app talks to a `db` repository ([`src/db/`](src/db)) with two
-interchangeable backends: **localStorage** (default, what runs today) and
-**Supabase** (shared boards, roles, enforced per-team visibility, realtime).
-Setting `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` switches to Supabase with
-no code change. The Supabase path is written against the schema but not yet run
-against a live project — see [`docs/BACKEND.md`](docs/BACKEND.md).
+Pushing to `main` builds and publishes to GitHub Pages via
+[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) (Settings →
+Pages → Source must be **GitHub Actions**). The Supabase URL and publishable
+anon key are set in the workflow — safe to expose; RLS is what protects the
+data.
+
+## History
+
+See [CHANGELOG.md](CHANGELOG.md) for the full dated history.
