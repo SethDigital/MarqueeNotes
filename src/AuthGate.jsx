@@ -49,12 +49,14 @@ function SignIn() {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
 
   const submit = async (e) => {
     e.preventDefault();
     setBusy(true);
     setError("");
+    setNotice("");
     const fn =
       mode === "in"
         ? supabase.auth.signInWithPassword({ email, password })
@@ -63,9 +65,18 @@ function SignIn() {
             password,
             options: { data: { display_name: name || email.split("@")[0] } },
           });
-    const { error } = await fn;
+    const { data, error } = await fn;
     setBusy(false);
-    if (error) setError(error.message);
+    if (error) return setError(error.message);
+    // With email confirmation on, a successful signUp returns a user but NO
+    // session — the gate stays shut and nothing visibly happens until the
+    // link in the email is clicked. Say so instead of sitting silent. (Also
+    // shows for an already-registered email, which Supabase deliberately
+    // reports the same way so signup can't be used to probe for accounts.)
+    if (mode === "up" && !data.session) {
+      setMode("in");
+      setNotice(`Almost there — we sent a confirmation link to ${email}. Click it, then sign in here.`);
+    }
   };
 
   return (
@@ -85,6 +96,7 @@ function SignIn() {
           <label>Password
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
           </label>
+          {notice && <p className="hint">{notice}</p>}
           {error && <p className="error">{error}</p>}
           <button className="btn primary" type="submit" disabled={busy}>
             {busy ? "…" : mode === "in" ? "Sign in" : "Sign up"}
@@ -92,7 +104,7 @@ function SignIn() {
         </form>
         <p className="hint" style={{ marginTop: 12 }}>
           {mode === "in" ? "No account yet? " : "Already have one? "}
-          <button className="link-btn" onClick={() => setMode(mode === "in" ? "up" : "in")}>
+          <button className="link-btn" onClick={() => { setMode(mode === "in" ? "up" : "in"); setError(""); setNotice(""); }}>
             {mode === "in" ? "Create one" : "Sign in"}
           </button>
         </p>
