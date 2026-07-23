@@ -64,7 +64,7 @@ curl -s "https://<ref>.supabase.co/rest/v1/notes?select=w&limit=1" -H "apikey: <
 Current migrations, in order: `0001_init` → `0002_invites` → `0003_completion`
 → `0004_soft_delete` → `0005_stickers` → `0006_note_size` → `0007_note_colors`
 → `0008_sticker_layer_stash` → `0009_security_hardening`
-→ `0010_redeem_error_collapse`.
+→ `0010_redeem_error_collapse` → `0011_fix_invite_code_rng`.
 
 ## Schema at a glance
 

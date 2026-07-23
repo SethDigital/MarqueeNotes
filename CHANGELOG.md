@@ -10,6 +10,12 @@ All notable changes to MarqueeNotes, newest first. Dates are commit dates.
   nothing happened). Errors and notices also clear when switching between the
   sign-in and sign-up forms.
 
+### Fixed
+- Invite creation broke after `0009` with "function gen_random_bytes(integer)
+  does not exist" — pgcrypto lives in Supabase's `extensions` schema, and
+  `create_invite()` pins `search_path = public`, so the unqualified call
+  couldn't resolve. `0011_fix_invite_code_rng` schema-qualifies it.
+
 ### Operations (Supabase dashboard, not in the repo)
 - Email confirmation required for new accounts
 - Minimum password length raised from 6 to 12
